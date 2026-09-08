@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>출퇴근 처리기</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Malgun Gothic', '맑은 고딕', sans-serif;
+  background: linear-gradient(135deg, #667eea22 0%, #764ba222 100%), #f0f4f8;
+  min-height: 100vh;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 30px 16px;
+}
+
+/* ── 공통 카드 ── */
+.card {
+  background: white; border-radius: 18px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+  width: 100%;
+}
+
+/* ── 화면 전환 ── */
+.screen { display: none; }
+.screen.active { display: block; }
+
+/* ── 화면 1 ── */
+#screen1 { max-width: 560px; padding: 38px 40px; }
+.hdr { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+.hdr-icon { font-size: 32px; }
+h1 { font-size: 21px; font-weight: 700; color: #1a202c; }
+.subtitle { font-size: 13px; color: #718096; margin-bottom: 30px; padding-left: 44px; }
+.sec-label {
+  font-size: 11px; font-weight: 700; color: #4a5568;
+  text-transform: uppercase; letter-spacing: 0.07em;
+  margin-bottom: 8px; display: flex; align-items: center; gap: 8px;
+}
+.badge {
+  display: inline-block; font-size: 10px; padding: 2px 8px;
+  border-radius: 99px; background: #ebf8ff; color: #2b6cb0; font-weight: 700;
+}
+.drop-zone {
+  border: 2px dashed #cbd5e0; border-radius: 12px;
+  padding: 22px 20px; text-align: center; cursor: pointer;
+  transition: all 0.2s; background: #f7fafc;
+  margin-bottom: 20px; position: relative; overflow: hidden;
+}
+.drop-zone:hover, .drop-zone.dragover { border-color: #667eea; background: #f0f0ff; }
+.drop-zone.loaded { border-color: #48bb78; background: #f0fff4; border-style: solid; }
+.drop-zone .dz-icon { font-size: 28px; margin-bottom: 6px; }
+.drop-zone .dz-main { font-size: 14px; font-weight: 600; color: #2d3748; margin-bottom: 3px; }
+.drop-zone .dz-hint { font-size: 12px; color: #a0aec0; }
+.drop-zone .file-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #c6f6d5; color: #22543d; border-radius: 8px;
+  padding: 4px 12px; font-size: 13px; font-weight: 600; margin-top: 2px;
+}
+.drop-zone input[type=file] {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer;
+}
+.divider {
+  display: flex; align-items: center; gap: 10px;
+  margin: 4px 0 22px; color: #cbd5e0; font-size: 11px;
+}
+.divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: #e2e8f0; }
+.btn-primary {
+  width: 100%; padding: 15px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white; border: none; border-radius: 12px;
+  font-size: 15px; font-weight: 700; cursor: pointer;
+  font-family: inherit; letter-spacing: 0.04em;
+  box-shadow: 0 4px 15px rgba(102,126,234,0.35);
+  transition: all 0.2s;
+}
+.btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(102,126,234,0.45); }
+.btn-primary:disabled { background: #a0aec0; cursor: not-allowed; box-shadow: none; }
+.prog-wrap { height: 5px; background: #e2e8f0; border-radius: 99px; margin: 14px 0 0; overflow: hidden; display: none; }
+.prog-wrap.show { display: block; }
+.prog-bar { height: 100%; background: linear-gradient(90deg, #667eea, #764ba2); width: 0%; transition: width 0.4s; border-radius: 99px; }
+.log-box {
+  margin-top: 16px; background: #1a202c; color: #68d391;
+  font-family: 'Consolas', monospace; font-size: 12px;
+  border-radius: 10px; padding: 14px 16px; max-height: 180px; overflow-y: auto;
+  display: none; line-height: 1.75;
+}
+.log-box.show { display: block; }
+.log-err { color: #fc8181; } .log-info { color: #90cdf4; }
+.log-ok { color: #68d391; } .log-warn { color: #f6e05e; }
+.note {
+  margin-top: 18px; padding: 10px 14px;
+  background: #fffbeb; border-left: 3px solid #f6ad55;
+  border-radius: 6px; font-size: 12px; color: #744210; line-height: 1.6;
+}
+
+/* ── 화면 2 (결과) ── */
+#screen2 { max-width: 800px; padding: 32px 36px; }
+.back-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: none; border: 1.5px solid #e2e8f0; border-radius: 8px;
+  padding: 7px 14px; font-size: 13px; font-weight: 600; color: #4a5568;
+  cursor: pointer; font-family: inherit; margin-bottom: 22px;
+  transition: all 0.2s;
+}
+.back-btn:hover { border-color: #667eea; color: #667eea; background: #f0f0ff; }
+.s2-title { font-size: 19px; font-weight: 700; color: #1a202c; margin-bottom: 4px; }
+.s2-sub { font-size: 13px; color: #718096; margin-bottom: 24px; }
+
+.dl-row { display: flex; gap: 10px; margin-bottom: 24px; flex-wrap: wrap; }
+.btn-dl {
+  flex: 1; min-width: 200px; padding: 11px 16px;
+  background: #276749; color: white; border: none; border-radius: 10px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+  font-family: inherit; transition: background 0.2s;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.btn-dl:hover { background: #22543d; }
+
+.sep { border: none; border-top: 1px solid #e2e8f0; margin: 0 0 24px; }
+
+/* 인사정보 업로드 영역 */
+.info-upload-wrap { display: flex; align-items: center; gap: 14px; margin-bottom: 24px; flex-wrap: wrap; }
+.info-drop {
+  flex: 1; min-width: 220px;
+  border: 2px dashed #cbd5e0; border-radius: 10px;
+  padding: 16px 20px; text-align: center; cursor: pointer;
+  background: #f7fafc; position: relative; transition: all 0.2s;
+}
+.info-drop:hover, .info-drop.dragover { border-color: #667eea; background: #f0f0ff; }
+.info-drop.loaded { border-color: #48bb78; background: #f0fff4; border-style: solid; }
+.info-drop input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.info-drop .id-main { font-size: 13px; font-weight: 600; color: #2d3748; }
+.info-drop .id-hint { font-size: 11px; color: #a0aec0; margin-top: 2px; }
+
+/* ── 결과 표 영역 (팀별 카드 그리드, 복사 가능) ── */
+#table-area { display: none; }
+#table-area.show { display: block; }
+
+.tbl-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px; flex-wrap: wrap; gap: 8px;
+}
+.tbl-title { font-size: 15px; font-weight: 700; color: #1a202c; }
+.btn-copy {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 16px; border: 1.5px solid #667eea; border-radius: 8px;
+  font-size: 13px; font-weight: 600; color: #667eea; cursor: pointer;
+  background: white; font-family: inherit; transition: all 0.2s;
+}
+.btn-copy:hover { background: #667eea; color: white; }
+
+.team-grid {
+  display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start;
+}
+.team-card {
+  flex: 1 1 320px; max-width: 100%;
+  border: 1px solid #1a202c; border-radius: 0;
+  overflow: hidden; background: #fff;
+  user-select: text;
+}
+.team-card-hdr {
+  background: #cbd5e0; color: #1a202c;
+  font-weight: 700; font-size: 13px;
+  padding: 10px 12px; text-align: center;
+  border-bottom: 1px solid #1a202c;
+}
+.team-card table {
+  width: 100%; border-collapse: collapse;
+  font-size: 13px;
+}
+.team-card th, .team-card td {
+  border: 1px solid #1a202c;
+  padding: 8px 10px; text-align: center;
+  vertical-align: middle;
+}
+.team-card thead th { background: #e2e8f0; font-weight: 700; }
+.team-card tbody tr:nth-child(even) { background: #f7fafc; }
+.team-card .td-name { text-align: center; font-weight: 500; }
+.team-card .td-pct { text-align: center; font-weight: 600; color: #276749; font-variant-numeric: tabular-nums; }
+.copy-toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: #2d3748; color: white; padding: 10px 22px; border-radius: 8px;
+  font-size: 13px; font-weight: 600; pointer-events: none;
+  opacity: 0; transition: opacity 0.3s; z-index: 999;
+}
+.copy-toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════
+     화면 1 : 파일 업로드 & 처리
+════════════════════════════════════════════ -->
+<div class="card screen active" id="screen1">
+  <div class="hdr">
+    <span class="hdr-icon">📊</span>
+    <h1>출퇴근 처리기</h1>
+  </div>
+  <p class="subtitle">두 파일을 업로드하면 공휴일·빈칸 자동 처리 후<br>교정수행도 N열(실근무시간)까지 한 번에 완성합니다</p>
+
+  <div class="sec-label">① 교정수행도평가 <span class="badge">.xlsx</span></div>
+  <div class="drop-zone" id="zone-su"
+       ondragover="onDrag(event,'su')" ondragleave="onLeave('su')" ondrop="onDrop(event,'su')">
+    <input type="file" accept=".xlsx" onchange="onFile(event,'su')">
+    <div class="dz-icon" id="icon-su">📋</div>
+    <div class="dz-main">교정수행도평가.xlsx</div>
+    <div class="dz-hint" id="hint-su">파일을 끌어다 놓거나 클릭하세요</div>
+  </div>
+
+  <div class="divider">▼</div>
+
+  <div class="sec-label">② 출퇴근시간 <span class="badge">.xlsx</span></div>
+  <div class="drop-zone" id="zone-at"
+       ondragover="onDrag(event,'at')" ondragleave="onLeave('at')" ondrop="onDrop(event,'at')">
+    <input type="file" accept=".xlsx" onchange="onFile(event,'at')">
+    <div class="dz-icon" id="icon-at">🕐</div>
+    <div class="dz-main">출퇴근시간.xlsx</div>
+    <div class="dz-hint" id="hint-at">파일을 끌어다 놓거나 클릭하세요</div>
+  </div>
+
+  <div class="prog-wrap" id="prog-wrap"><div class="prog-bar" id="prog-bar"></div></div>
+
+  <button class="btn-primary" id="btn-run" onclick="runProcess()" disabled>
+    ▶ &nbsp;처리 시작하기
+  </button>
+
+  <div class="log-box" id="log"></div>
+
+  <div class="note">
+    💡 <b>처리 내용:</b> ① 병합 셀 해제 &nbsp;② 공휴일·주말 → <code>00:00</code>
+    &nbsp;③ 평일 빈칸·대시 → 출근 <code>08:00</code> / 퇴근 <code>17:00</code>
+    &nbsp;④ Bold 이름 연간 실근무시간 → N열 기입 (소수점 2자리)
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════
+     화면 2 : 결과 다운로드 & 수행도 표
+════════════════════════════════════════════ -->
+<div class="card screen" id="screen2">
+  <button class="back-btn" onclick="goBack()">← 뒤로가기</button>
+
+  <div class="s2-title">✅ 처리 완료</div>
+  <p class="s2-sub">파일을 다운로드하거나, 인사정보를 업로드해 수행도 현황 표를 확인하세요.</p>
+
+  <div class="dl-row">
+    <button class="btn-dl" onclick="downloadFile('at')">⬇ 출퇴근시간_처리완료.xlsx</button>
+    <button class="btn-dl" onclick="downloadFile('su')">⬇ 교정수행도평가_처리완료.xlsx</button>
+  </div>
+
+  <hr class="sep">
+
+  <div class="sec-label">③ 인사정보 <span class="badge">.xlsx</span> &nbsp;— A열: 이름 &nbsp;/ E열: 팀</div>
+  <div class="info-upload-wrap">
+    <div class="info-drop" id="zone-info"
+         ondragover="onDrag(event,'info')" ondragleave="onLeave('info')" ondrop="onDrop(event,'info')">
+      <input type="file" accept=".xlsx" onchange="onFile(event,'info')">
+      <div class="id-main" id="info-main">📁 인사정보.xlsx</div>
+      <div class="id-hint" id="info-hint">클릭하거나 파일을 끌어다 놓으세요</div>
+    </div>
+  </div>
+
+  <!-- 결과 표: 팀별 카드 (교정 담당자 | 수행도 %), 드래그·복사 가능 -->
+  <div id="table-area">
+    <div class="tbl-toolbar">
+      <span class="tbl-title">📋 교정수행도 현황 (팀별)</span>
+      <button class="btn-copy" onclick="copyTable()">📋 표 전체 복사</button>
+    </div>
+    <div id="team-grid" class="team-grid" aria-label="팀별 수행도 표"></div>
+  </div>
+</div>
+
+<div class="copy-toast" id="copy-toast">📋 클립보드에 복사되었습니다</div>
+
+<!-- ══════════════════════════════════════════  SCRIPT  -->
+<script>
+// ──────────────────────────────────────────────────────────
+//  전역 상태
+// ──────────────────────────────────────────────────────────
+const files   = { su: null, at: null, info: null };
+const results = { su: null, at: null };
+let boldEmployeeData = []; // [{name, 교정소요시간, 실근무시간, 수행율}]
+
+// ──────────────────────────────────────────────────────────
+//  화면 전환 (+ 브라우저 뒤로가기/앞으로가기)
+// ──────────────────────────────────────────────────────────
+function applyScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  window.scrollTo(0, 0);
+}
+/** 히스토리 없이 화면만 전환 (popstate 처리용) */
+function showScreen(id) {
+  applyScreen(id);
+}
+/** 완료 화면으로 이동할 때 주소에 #done 푸시 → 브라우저 뒤로가기로 1화면 복귀 */
+function showScreen2WithHistory() {
+  try {
+    history.pushState({ screen: 2 }, '', '#done');
+  } catch (e) {}
+  applyScreen('screen2');
+}
+function goBack() {
+  try {
+    if (document.getElementById('screen2').classList.contains('active')) {
+      history.back();
+      return;
+    }
+  } catch (e) {}
+  applyScreen('screen1');
+}
+
+window.addEventListener('popstate', function (e) {
+  const sc = e.state && e.state.screen;
+  if (sc === 2) applyScreen('screen2');
+  else applyScreen('screen1');
+});
+
+try {
+  if (!history.state || history.state.screen !== 2) {
+    history.replaceState({ screen: 1 }, '', location.href.split('#')[0] || location.href);
+  }
+} catch (e) {}
+
+// ──────────────────────────────────────────────────────────
+//  드래그 & 드롭 / 파일 선택
+// ──────────────────────────────────────────────────────────
+function onDrag(e, k) { e.preventDefault(); document.getElementById('zone-'+k).classList.add('dragover'); }
+function onLeave(k)   { document.getElementById('zone-'+k).classList.remove('dragover'); }
+function onDrop(e, k) { e.preventDefault(); onLeave(k); loadFile(e.dataTransfer.files[0], k); }
+function onFile(e, k) { loadFile(e.target.files[0], k); }
+
+function loadFile(f, k) {
+  if (!f) return;
+  new FileReader().result; // flush
+  const reader = new FileReader();
+  reader.onload = ev => {
+    files[k] = { name: f.name, data: new Uint8Array(ev.target.result) };
+    if (k === 'su' || k === 'at') {
+      document.getElementById('zone-'+k).classList.add('loaded');
+      document.getElementById('icon-'+k).textContent = '✅';
+      document.getElementById('hint-'+k).innerHTML = `<span class="file-badge">✓ ${f.name}</span>`;
+      checkReady();
+    } else if (k === 'info') {
+      document.getElementById('zone-info').classList.add('loaded');
+      document.getElementById('info-main').textContent = '✅ ' + f.name;
+      document.getElementById('info-hint').textContent = '파일 로드 완료';
+      buildTable();
+    }
+  };
+  reader.readAsArrayBuffer(f);
+}
+
+function checkReady() {
+  document.getElementById('btn-run').disabled = !(files.su && files.at);
+}
+
+// ──────────────────────────────────────────────────────────
+//  로그 & 진행
+// ──────────────────────────────────────────────────────────
+function log(msg, cls) {
+  const box = document.getElementById('log');
+  box.classList.add('show');
+  const d = document.createElement('div');
+  if (cls) d.className = cls;
+  d.textContent = msg;
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+}
+function setProgress(p) {
+  document.getElementById('prog-wrap').classList.add('show');
+  document.getElementById('prog-bar').style.width = p + '%';
+}
+
+// ──────────────────────────────────────────────────────────
+//  한국 공휴일 (2025)
+// ──────────────────────────────────────────────────────────
+const KR_HOLIDAYS = new Set([
+  '2025-01-01','2025-01-28','2025-01-29','2025-01-30',
+  '2025-03-01','2025-03-03',
+  '2025-05-05','2025-05-06',
+  '2025-06-06', '2025-08-15',
+  '2025-10-03','2025-10-05','2025-10-06','2025-10-07','2025-10-08','2025-10-09',
+  '2025-12-25'
+]);
+function isHoliday(y, m, d) {
+  const dt = new Date(y, m-1, d);
+  if (dt.getDay() === 0 || dt.getDay() === 6) return true;
+  return KR_HOLIDAYS.has(`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`);
+}
+
+// ──────────────────────────────────────────────────────────
+//  셀 유틸
+// ──────────────────────────────────────────────────────────
+function parseTime(val) {
+  if (!val) return null;
+  const s = String(val).trim();
+  if (s === '00:00') return null;
+  const m = s.match(/^(\d{1,2}):(\d{2})$/);
+  return m ? parseInt(m[1]) + parseInt(m[2])/60 : null;
+}
+function getCellStr(ws, r, c) {
+  const cell = ws[XLSX.utils.encode_cell({r,c})];
+  return cell ? String(cell.v ?? '').trim() : '';
+}
+function getCellNum(ws, r, c) {
+  const cell = ws[XLSX.utils.encode_cell({r,c})];
+  if (!cell || cell.v === undefined || cell.v === null || cell.v === '') return null;
+  const n = parseFloat(cell.v);
+  return isNaN(n) ? null : n;
+}
+function setCell(ws, r, c, val) {
+  const a = XLSX.utils.encode_cell({r,c});
+  ws[a] = { v: val, t: 's', w: val };
+}
+function setNumCell(ws, r, c, val) {
+  const a = XLSX.utils.encode_cell({r,c});
+  ws[a] = { v: val, t: 'n', w: String(val) };
+}
+
+// ──────────────────────────────────────────────────────────
+//  Bold 감지 (OOXML 직접 파싱 - 가장 정확)
+// ──────────────────────────────────────────────────────────
+function lName(el) { return el?.localName ?? ''; }
+
+async function buildBoldCellSetFromOoxml(uint8Array) {
+  const boldCells = new Set();
+  try {
+    const zip = await JSZip.loadAsync(uint8Array);
+    const wbXml   = await zip.file('xl/workbook.xml')?.async('string');
+    const relsXml  = await zip.file('xl/_rels/workbook.xml.rels')?.async('string');
+    if (!wbXml || !relsXml) return boldCells;
+
+    const wbDoc   = new DOMParser().parseFromString(wbXml,  'text/xml');
+    const relsDoc = new DOMParser().parseFromString(relsXml,'text/xml');
+    const firstSheet = [...wbDoc.getElementsByTagName('*')].find(e => lName(e)==='sheet');
+    if (!firstSheet) return boldCells;
+
+    let rid = firstSheet.getAttribute('r:id');
+    if (!rid) for (const a of firstSheet.attributes||[])
+      if (a.localName==='id' && (a.prefix==='r'||a.name==='r:id')) { rid=a.value; break; }
+    if (!rid) rid = firstSheet.getAttribute('id');
+
+    let sheetPath = 'xl/worksheets/sheet1.xml';
+    for (const rel of relsDoc.getElementsByTagName('Relationship'))
+      if (rel.getAttribute('Id')===rid) {
+        sheetPath = 'xl/' + (rel.getAttribute('Target')||'').replace(/^\//,'');
+        break;
+      }
+
+    const stylesXml = await zip.file('xl/styles.xml')?.async('string');
+    if (!stylesXml) return boldCells;
+    const stDoc = new DOMParser().parseFromString(stylesXml,'text/xml');
+
+    const fontsRoot = [...stDoc.getElementsByTagName('*')].find(e=>lName(e)==='fonts');
+    const fonts = fontsRoot ? [...fontsRoot.getElementsByTagName('*')].filter(e=>lName(e)==='font') : [];
+    const boldFontId = new Set();
+    fonts.forEach((font, idx) => {
+      const bTags = [...font.getElementsByTagName('*')].filter(e=>lName(e)==='b');
+      if (bTags.some(b => { const v=b.getAttribute('val'); return v===null||v===''||!(v==='0'||v==='false'); }))
+        boldFontId.add(idx);
+    });
+
+    const cellXfs = [...stDoc.getElementsByTagName('*')].find(e=>lName(e)==='cellXfs');
+    const boldXfIdx = new Set();
+    if (cellXfs) {
+      let xi=0;
+      for (const ch of cellXfs.children) {
+        if (lName(ch)!=='xf') continue;
+        if (boldFontId.has(parseInt(ch.getAttribute('fontId')||'0',10))) boldXfIdx.add(xi);
+        xi++;
+      }
+    }
+
+    const shXml = await zip.file(sheetPath)?.async('string');
+    if (!shXml) return boldCells;
+    const shDoc = new DOMParser().parseFromString(shXml,'text/xml');
+    const shData = [...shDoc.getElementsByTagName('*')].find(e=>lName(e)==='sheetData');
+    if (!shData) return boldCells;
+
+    const colABold = new Map();
+    for (const row of shData.getElementsByTagName('*')) {
+      if (lName(row)!=='row') continue;
+      for (const c of row.getElementsByTagName('*')) {
+        if (lName(c)!=='c') continue;
+        const ref = c.getAttribute('r')||'';
+        const mm = ref.match(/^A(\d+)$/i);
+        if (!mm) continue;
+        const si = parseInt(c.getAttribute('s')||'0',10);
+        if (boldXfIdx.has(si)) colABold.set(parseInt(mm[1],10), true);
+      }
+    }
+    // 병합된 경우 상위 bold 를 하위에도 적용
+    const mergeRoot = [...shDoc.getElementsByTagName('*')].find(e=>lName(e)==='mergeCells');
+    if (mergeRoot) for (const mc of mergeRoot.getElementsByTagName('*')) {
+      if (lName(mc)!=='mergeCell') continue;
+      const mm = (mc.getAttribute('ref')||'').match(/^A(\d+):A(\d+)$/i);
+      if (!mm) continue;
+      const r1=parseInt(mm[1],10), r2=parseInt(mm[2],10);
+      if (colABold.has(r1)) for (let rr=r1;rr<=r2;rr++) colABold.set(rr,true);
+    }
+    colABold.forEach((_,row) => boldCells.add('A'+row));
+  } catch(e) { console.warn('OOXML bold:', e); }
+  return boldCells;
+}
+
+// ──────────────────────────────────────────────────────────
+//  출퇴근시간.xlsx 처리 → employeeHours 반환
+// ──────────────────────────────────────────────────────────
+function processAttendance(wb) {
+  const empHours = {};
+  for (const sName of wb.SheetNames) {
+    const m = sName.match(/(\d{4})년\s*(\d{1,2})월/);
+    if (!m) continue;
+    const year=parseInt(m[1]), month=parseInt(m[2]);
+    const ws = wb.Sheets[sName];
+    const rangeRef = ws['!ref'];
+    if (!rangeRef) continue;
+    const range = XLSX.utils.decode_range(rangeRef);
+
+    // 병합 해제
+    if (ws['!merges']?.length) {
+      for (const mr of ws['!merges']) {
+        const tl = XLSX.utils.encode_cell({r:mr.s.r,c:mr.s.c});
+        const tlCell = ws[tl];
+        if (!tlCell) continue;
+        for (let rr=mr.s.r;rr<=mr.e.r;rr++) for (let cc=mr.s.c;cc<=mr.e.c;cc++) {
+          if (rr===mr.s.r&&cc===mr.s.c) continue;
+          ws[XLSX.utils.encode_cell({r:rr,c:cc})] = JSON.parse(JSON.stringify(tlCell));
+        }
+      }
+      ws['!merges'] = [];
+    }
+
+    // col → day 매핑
+    const colToDay = {};
+    for (let c=2;c<=range.e.c;c++) {
+      const day = parseInt(getCellStr(ws,0,c));
+      if (!isNaN(day)&&day>=1&&day<=31) colToDay[c]=day;
+    }
+
+    let r=2;
+    while (r<=range.e.r) {
+      if (getCellStr(ws,r,1)!=='출근') { r++; continue; }
+      const name = getCellStr(ws,r,0);
+      if (getCellStr(ws,r+1,1)!=='퇴근') { r++; continue; }
+      const rIn=r, rOut=r+1;
+      for (const [cStr,day] of Object.entries(colToDay)) {
+        const c=parseInt(cStr);
+        const vIn=getCellStr(ws,rIn,c), vOut=getCellStr(ws,rOut,c);
+        if (isHoliday(year,month,day)) {
+          if (!vIn||vIn==='-')  setCell(ws,rIn,c,'00:00');
+          if (!vOut||vOut==='-') setCell(ws,rOut,c,'00:00');
+        } else {
+          if (!vIn||vIn==='-')  setCell(ws,rIn,c,'08:00');
+          if (!vOut||vOut==='-') setCell(ws,rOut,c,'17:00');
+        }
+        const tIn=parseTime(getCellStr(ws,rIn,c)), tOut=parseTime(getCellStr(ws,rOut,c));
+        if (tIn!==null&&tOut!==null&&name) {
+          let hrs=tOut-tIn; if (hrs<0) hrs+=24;
+          empHours[name]=(empHours[name]||0)+hrs;
+        }
+      }
+      r+=2;
+    }
+  }
+  return empHours;
+}
+
+// ──────────────────────────────────────────────────────────
+//  교정수행도평가.xlsx 처리 → N열 기입 + boldEmployeeData 수집
+// ──────────────────────────────────────────────────────────
+function processSuhaengdo(wb, empHours, ooxmlBoldSet) {
+  boldEmployeeData = [];
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  if (!ws['!ref']) return { written:0, notFound:[] };
+  const range = XLSX.utils.decode_range(ws['!ref']);
+
+  // bold 셀 집합
+  const boldSet = new Set();
+  for (let r=range.s.r;r<=range.e.r;r++) {
+    const addr = XLSX.utils.encode_cell({r,c:0});
+    if (ooxmlBoldSet?.has(addr)) boldSet.add(addr);
+    else {
+      const cell=ws[addr];
+      if (cell?.s?.font) {
+        const f=cell.s.font;
+        if (f.bold||f.b) boldSet.add(addr);
+      }
+    }
+  }
+
+  let written=0;
+  const notFound=[];
+  const skip=new Set(['총합계','항목','수행도']);
+
+  for (let r=range.s.r;r<=range.e.r;r++) {
+    const addr = XLSX.utils.encode_cell({r,c:0});
+    const cell = ws[addr];
+    if (!cell?.v) continue;
+    const name = String(cell.v).trim();
+    if (skip.has(name)||!boldSet.has(addr)) continue;
+
+    const 교정소요시간 = getCellNum(ws,r,12) ?? 0; // M열(0-based:12)
+    const 수행율       = getCellNum(ws,r,14) ?? null; // O열(0-based:14)
+
+    if (empHours[name]!==undefined) {
+      const hrs = Math.round(empHours[name]*100)/100;
+      setNumCell(ws,r,13,hrs); // N열
+      const 실근무시간 = hrs;
+      // 수행율 계산 (M/N*100, 없으면 셀값 사용)
+      const pct = 실근무시간>0
+        ? Math.round((교정소요시간/실근무시간)*100*100)/100
+        : (수행율 ?? 0);
+      boldEmployeeData.push({ name, 교정소요시간, 실근무시간, 수행율: pct });
+      written++;
+    } else {
+      notFound.push(name);
+    }
+  }
+  return { written, notFound };
+}
+
+// ──────────────────────────────────────────────────────────
+//  다운로드
+// ──────────────────────────────────────────────────────────
+function downloadFile(k) {
+  if (!results[k]) return;
+  XLSX.writeFile(results[k].wb, results[k].filename, { cellStyles:true });
+}
+
+// ──────────────────────────────────────────────────────────
+//  메인 실행
+// ──────────────────────────────────────────────────────────
+async function runProcess() {
+  document.getElementById('btn-run').disabled = true;
+  document.getElementById('log').innerHTML = '';
+  setProgress(5);
+
+  try {
+    log('📂 파일 읽는 중...','log-info');
+
+    const wbAt = XLSX.read(files.at.data, {type:'array', sheetStubs:true});
+    log(`  ✓ 출퇴근시간 — ${wbAt.SheetNames.length}개 시트`,'log-ok');
+    setProgress(15);
+
+    const wbSu = XLSX.read(files.su.data, {type:'array', cellStyles:true, sheetStubs:true});
+    log(`  ✓ 교정수행도평가 — ${wbSu.SheetNames.length}개 시트`,'log-ok');
+    setProgress(25);
+
+    log('🔍 Bold 이름 감지 중...','log-info');
+    const ooxmlBoldSet = await buildBoldCellSetFromOoxml(files.su.data);
+    log(`  ✓ Bold 셀 ${ooxmlBoldSet.size}개 감지`,'log-ok');
+    setProgress(40);
+
+    log('⚙️  출퇴근시간 처리 중...','log-info');
+    const empHours = processAttendance(wbAt);
+    log(`  ✓ ${Object.keys(empHours).length}명 연간 근무시간 계산`,'log-ok');
+    setProgress(70);
+
+    log('📝 교정수행도평가 N열 기입 중...','log-info');
+    const { written, notFound } = processSuhaengdo(wbSu, empHours, ooxmlBoldSet);
+    log(`  ✓ ${written}명 N열(실근무시간) 기입 완료`,'log-ok');
+    if (notFound.length>0)
+      log(`  ⚠ 출퇴근 미매칭(${notFound.length}명): ${notFound.slice(0,4).join(', ')}${notFound.length>4?'…':''}`,'log-warn');
+    setProgress(95);
+
+    results.at = { wb:wbAt, filename:'출퇴근시간_처리완료.xlsx' };
+    results.su = { wb:wbSu, filename:'교정수행도평가_처리완료.xlsx' };
+    setProgress(100);
+
+    // 화면 2로 이동 (다음 화면 전환 + 브라우저 뒤로가기 지원)
+    setTimeout(() => showScreen2WithHistory(), 500);
+
+  } catch(err) {
+    log('❌ 오류: '+err.message,'log-err');
+    console.error(err);
+  }
+  document.getElementById('btn-run').disabled = false;
+}
+
+function normNameKey(s) {
+  return String(s || '').replace(/\s+/g, '').trim();
+}
+
+// ──────────────────────────────────────────────────────────
+//  인사정보.xlsx 로드 후 표 생성 (팀별 카드: 교정 담당자 | 수행도 %)
+// ──────────────────────────────────────────────────────────
+function buildTable() {
+  if (!files.info || boldEmployeeData.length===0) return;
+
+  const wb = XLSX.read(files.info.data, {type:'array'});
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  if (!ws['!ref']) return;
+  const range = XLSX.utils.decode_range(ws['!ref']);
+
+  // 이름 → 팀 매핑 (A열=0, E열=4), 공백 무시 키로 조회
+  const nameToTeam = {};
+  for (let r=range.s.r;r<=range.e.r;r++) {
+    const nameRaw = getCellStr(ws,r,0);
+    const team = getCellStr(ws,r,4);
+    const key = normNameKey(nameRaw);
+    if (!key) continue;
+    if (!nameToTeam[key]) nameToTeam[key] = team && team.trim() ? team.trim() : '(미배정)';
+  }
+
+  // 팀별 그룹핑
+  const teams = {}; // teamName → [{name, 수행율}]
+  for (const emp of boldEmployeeData) {
+    const key = normNameKey(emp.name);
+    const team = nameToTeam[key] || '(미배정)';
+    if (!teams[team]) teams[team] = [];
+    const work = emp.실근무시간;
+    const cal = emp.교정소요시간;
+    const pct = work > 0
+      ? Math.round((cal / work) * 100 * 100) / 100
+      : (emp.수행율 != null ? emp.수행율 : 0);
+    teams[team].push({ name: emp.name, pct });
+  }
+
+  const grid = document.getElementById('team-grid');
+  grid.innerHTML = '';
+
+  const teamNames = Object.keys(teams).sort((a, b) => {
+    if (a === '(미배정)' && b !== '(미배정)') return 1;
+    if (b === '(미배정)' && a !== '(미배정)') return -1;
+    return a.localeCompare(b, 'ko');
+  });
+
+  for (const team of teamNames) {
+    const emps = teams[team].slice().sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+
+    const card = document.createElement('div');
+    card.className = 'team-card';
+    const hdr = document.createElement('div');
+    hdr.className = 'team-card-hdr';
+    hdr.textContent = team;
+    const table = document.createElement('table');
+    const thead = document.createElement('thead');
+    thead.innerHTML = '<tr><th>교정 담당자</th><th>수행도 (%)</th></tr>';
+    const tbody = document.createElement('tbody');
+    for (const e of emps) {
+      const tr = document.createElement('tr');
+      const td1 = document.createElement('td');
+      td1.className = 'td-name';
+      td1.textContent = e.name;
+      const td2 = document.createElement('td');
+      td2.className = 'td-pct';
+      td2.textContent = Number(e.pct).toFixed(2) + '%';
+      tr.appendChild(td1);
+      tr.appendChild(td2);
+      tbody.appendChild(tr);
+    }
+    table.appendChild(thead);
+    table.appendChild(tbody);
+    card.appendChild(hdr);
+    card.appendChild(table);
+    grid.appendChild(card);
+  }
+
+  document.getElementById('table-area').classList.add('show');
+}
+
+// ──────────────────────────────────────────────────────────
+//  표 복사 (탭 구분 TSV → 엑셀 붙여넣기 가능)
+// ──────────────────────────────────────────────────────────
+function copyTable() {
+  const rows = [];
+  const grid = document.getElementById('team-grid');
+  if (!grid || !grid.children.length) return;
+
+  for (const card of grid.querySelectorAll('.team-card')) {
+    const hdr = card.querySelector('.team-card-hdr');
+    const team = hdr ? hdr.textContent.trim() : '';
+    rows.push([team]);
+    rows.push(['교정 담당자', '수행도 (%)']);
+    const tbody = card.querySelector('tbody');
+    if (tbody) {
+      for (const tr of tbody.rows) {
+        const cells = [...tr.cells].map(td => td.textContent.trim().replace(/\n/g, ' '));
+        rows.push(cells);
+      }
+    }
+    rows.push([]);
+  }
+
+  const tsv = rows.map(r => r.join('\t')).join('\n');
+  navigator.clipboard.writeText(tsv).then(() => {
+    const toast = document.getElementById('copy-toast');
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2000);
+  }).catch(() => {
+    // fallback
+    const ta = document.createElement('textarea');
+    ta.value = tsv; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    const toast = document.getElementById('copy-toast');
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 2000);
+  });
+}
+</script>
+</body>
+</html>
