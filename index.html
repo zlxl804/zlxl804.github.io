@@ -4,11 +4,32 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>안태민 | 백엔드 개발자 & 인프라 엔지니어</title>
+<meta name="description" content="PHP 기반 웹 서비스 개발과 사내 IT 인프라 운영을 함께 책임져온 7년차 개발자 안태민의 포트폴리오입니다.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="안태민 | 백엔드 개발자 & 인프라 엔지니어">
+<meta property="og:description" content="PHP 기반 웹 서비스 개발과 사내 IT 인프라 운영을 함께 책임져온 7년차 개발자의 포트폴리오입니다.">
+<meta property="og:url" content="https://zlxl804.github.io">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-<header class="hero">
+<nav class="navbar">
+  <div class="container navbar-inner">
+    <a href="#top" class="brand">안태민</a>
+    <div class="nav-links">
+      <a href="#about">About</a>
+      <a href="#career">Career</a>
+      <a href="#skills">Skills</a>
+      <a href="#projects">Projects</a>
+      <a href="#contact">Contact</a>
+    </div>
+  </div>
+</nav>
+
+<header id="top" class="hero">
   <div class="container">
     <p class="eyebrow">Backend Developer &amp; Infra Engineer</p>
     <h1>안태민</h1>
@@ -16,6 +37,25 @@
     <div class="links">
       <a href="mailto:zlxl804@gmail.com">Email</a>
       <a href="https://github.com/zlxl804" target="_blank" rel="noopener">GitHub</a>
+    </div>
+
+    <div class="stats">
+      <div class="stat">
+        <span class="stat-num">7년+</span>
+        <span class="stat-label">실무 경력</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num">50→200</span>
+        <span class="stat-label">성장기 인프라 단독 운영</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num">5.0→7.1</span>
+        <span class="stat-label">PHP 레거시 마이그레이션</span>
+      </div>
+      <div class="stat">
+        <span class="stat-num">4</span>
+        <span class="stat-label">웹·모바일·앱 서비스 개발</span>
+      </div>
     </div>
   </div>
 </header>
@@ -26,8 +66,8 @@
     <div class="container">
       <h2>About</h2>
       <p>
-        코리아인스트루먼트(주)에서 7년간 근무하며 사내 교정·물류·영업 통합관리시스템과
-        B2B 고객용 교정관리 플랫폼(PC/모바일)을 개발·운영해왔습니다.
+        코리아인스트루먼트(주)에서 근무하며 사내 교정·물류·영업 통합관리시스템과
+        B2B 고객용 교정관리 플랫폼(PC/모바일/앱)을 개발·운영해왔습니다.
         레거시 PHP 5.0 시스템을 PHP 7.1로 전환하는 마이그레이션을 주도했고,
         직원 수가 50명에서 200명으로 늘어나는 동안 네트워크·전화·서버 등
         사내 IT 인프라 전반을 단독으로 담당하며 회사의 성장을 기술적으로 뒷받침했습니다.
@@ -36,21 +76,25 @@
     </div>
   </section>
 
-  <section id="highlights" class="section alt">
+  <section id="career" class="section alt">
     <div class="container">
-      <h2>Highlights</h2>
-      <div class="highlight-grid">
-        <div class="highlight-card">
-          <h3>레거시 마이그레이션</h3>
-          <p>PHP 5.0 기반 레거시 시스템을 PHP 7.1로 전환하여 보안성과 유지보수성을 개선했습니다.</p>
-        </div>
-        <div class="highlight-card">
-          <h3>1인 인프라 운영</h3>
-          <p>임직원 50명 → 200명으로 성장하는 7년간 네트워크·전화·서버 인프라를 단독으로 구축·운영했습니다.</p>
-        </div>
-        <div class="highlight-card">
-          <h3>풀사이클 개발</h3>
-          <p>사내 시스템부터 대외 서비스(PC/모바일)까지 설계·개발·배포·운영을 아우르는 경험을 쌓았습니다.</p>
+      <h2>Career</h2>
+      <div class="timeline">
+        <div class="timeline-item">
+          <div class="timeline-marker"></div>
+          <div class="timeline-content">
+            <div class="timeline-head">
+              <h3>코리아인스트루먼트(주)</h3>
+              <span class="timeline-period">2019.11 – 현재</span>
+            </div>
+            <p class="timeline-role">IT서비스개발실 · 백엔드 개발 &amp; 인프라 담당</p>
+            <ul>
+              <li>레거시 PHP 5.0 시스템을 PHP 7.1로 전환하는 마이그레이션 주도</li>
+              <li>사내 교정·물류·영업 통합관리시스템(CMS) 개발 및 유지보수</li>
+              <li>B2B 고객용 교정관리 플랫폼 PC/모바일 웹, Flutter 앱까지 풀사이클 개발 참여</li>
+              <li>임직원 50명 → 200명으로 성장하는 기간 동안 네트워크·전화·서버 인프라 단독 구축 및 운영, 이후 전담 인프라 담당자에게 인수인계</li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>
