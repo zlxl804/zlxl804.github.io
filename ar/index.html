@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>미수금 분기별 정리 파일 생성기</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Malgun Gothic', '맑은 고딕', sans-serif;
+  background: linear-gradient(135deg, #667eea22 0%, #764ba222 100%), #f0f4f8;
+  min-height: 100vh;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 30px 16px;
+}
+.card {
+  background: white; border-radius: 18px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+  width: 100%; max-width: 640px; padding: 38px 40px;
+}
+.hdr { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+.hdr-icon { font-size: 32px; }
+h1 { font-size: 21px; font-weight: 700; color: #1a202c; }
+.subtitle { font-size: 13px; color: #718096; margin-bottom: 26px; padding-left: 44px; }
+.sec-label {
+  font-size: 11px; font-weight: 700; color: #4a5568;
+  text-transform: uppercase; letter-spacing: 0.07em;
+  margin: 22px 0 8px; display: flex; align-items: center; gap: 8px;
+}
+.sec-label:first-of-type { margin-top: 0; }
+.badge {
+  display: inline-block; font-size: 10px; padding: 2px 8px;
+  border-radius: 99px; background: #ebf8ff; color: #2b6cb0; font-weight: 700;
+}
+.drop-zone {
+  border: 2px dashed #cbd5e0; border-radius: 12px;
+  padding: 18px 20px; text-align: center; cursor: pointer;
+  transition: all 0.2s; background: #f7fafc;
+  margin-bottom: 4px; position: relative; overflow: hidden;
+}
+.drop-zone:hover, .drop-zone.dragover { border-color: #667eea; background: #f0f0ff; }
+.drop-zone.loaded { border-color: #48bb78; background: #f0fff4; border-style: solid; }
+.drop-zone .dz-icon { font-size: 24px; margin-bottom: 4px; }
+.drop-zone .dz-main { font-size: 13px; font-weight: 600; color: #2d3748; margin-bottom: 2px; }
+.drop-zone .dz-hint { font-size: 11px; color: #a0aec0; }
+.drop-zone .file-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #c6f6d5; color: #22543d; border-radius: 8px;
+  padding: 3px 10px; font-size: 12px; font-weight: 600; margin-top: 2px;
+}
+.drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+.settings-box {
+  background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 12px;
+  padding: 16px 18px; margin-top: 6px;
+}
+.field-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 6px 0;
+}
+.field-row label { font-size: 13px; color: #2d3748; font-weight: 600; display:flex; align-items:center; gap:6px; }
+.info-dot {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; border-radius: 50%; background: #cbd5e0;
+  color: white; font-size: 10px; font-weight: 700; cursor: help;
+}
+.field-row input[type=date], .field-row input[type=text] {
+  border: 1px solid #cbd5e0; border-radius: 8px; padding: 6px 10px; font-size: 13px;
+  font-family: inherit;
+}
+.field-row input[type=color] {
+  width: 40px; height: 28px; border: 1px solid #cbd5e0; border-radius: 6px; cursor: pointer; padding: 2px;
+}
+.example-note {
+  font-size: 11.5px; color: #a0aec0; margin-top: 6px; line-height: 1.5;
+  background: #fffbeb; border-left: 3px solid #f6ad55; padding: 8px 10px; border-radius: 6px;
+}
+.color-scale { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+.color-scale .field-row { padding: 4px 0; }
+.cat-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.cat-row .cat-name { flex: 1; font-size: 13px; font-weight: 600; color: #2d3748; }
+.cat-row label.bold-toggle { display:flex; align-items:center; gap:4px; font-size: 11px; color:#718096; font-weight:500; }
+.cat-swatch { font-weight: 700; font-size: 12px; padding: 2px 8px; border-radius: 6px; }
+
+.filename-row { margin-top: 22px; }
+.filename-row input[type=text] { width: 100%; }
+.filename-row .ext-hint { font-size: 11px; color: #a0aec0; margin-top: 4px; }
+
+.btn-primary {
+  width: 100%; padding: 15px; margin-top: 22px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white; border: none; border-radius: 12px;
+  font-size: 15px; font-weight: 700; cursor: pointer;
+  font-family: inherit; letter-spacing: 0.04em;
+  box-shadow: 0 4px 15px rgba(102,126,234,0.35);
+  transition: all 0.2s;
+}
+.btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(102,126,234,0.45); }
+.btn-primary:disabled { background: #a0aec0; cursor: not-allowed; box-shadow: none; }
+
+.btn-dl {
+  width: 100%; padding: 14px; margin-top: 10px;
+  background: #276749; color: white; border: none; border-radius: 12px;
+  font-size: 14px; font-weight: 700; cursor: pointer;
+  font-family: inherit; transition: background 0.2s; display: none;
+}
+.btn-dl.show { display: block; }
+.btn-dl:hover { background: #22543d; }
+
+.prog-wrap { height: 5px; background: #e2e8f0; border-radius: 99px; margin: 14px 0 0; overflow: hidden; display: none; }
+.prog-wrap.show { display: block; }
+.prog-bar { height: 100%; background: linear-gradient(90deg, #667eea, #764ba2); width: 0%; transition: width 0.4s; border-radius: 99px; }
+.log-box {
+  margin-top: 14px; background: #1a202c; color: #68d391;
+  font-family: 'Consolas', monospace; font-size: 12px;
+  border-radius: 10px; padding: 14px 16px; max-height: 200px; overflow-y: auto;
+  display: none; line-height: 1.75;
+}
+.log-box.show { display: block; }
+.log-err { color: #fc8181; } .log-info { color: #90cdf4; }
+.log-ok { color: #68d391; } .log-warn { color: #f6e05e; }
+
+.note {
+  margin-top: 18px; padding: 10px 14px;
+  background: #fffbeb; border-left: 3px solid #f6ad55;
+  border-radius: 6px; font-size: 12px; color: #744210; line-height: 1.6;
+}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="hdr">
+    <span class="hdr-icon">💰</span>
+    <h1>미수금 분기별 정리 파일 생성기</h1>
+  </div>
+  <p class="subtitle">파일 3개를 업로드하면 미수금 대상을 자동 추출해<br>업체구분·연체개월 색상까지 입힌 요약 파일을 만듭니다</p>
+
+  <div class="sec-label">① 거래명세서데이터 <span class="badge">.xls</span></div>
+  <div class="drop-zone" id="zone-b"
+       ondragover="onDrag(event,'b')" ondragleave="onLeave('b')" ondrop="onDrop(event,'b')">
+    <input type="file" accept=".xls,.xlsx" onchange="onFile(event,'b')">
+    <div class="dz-icon" id="icon-b">📄</div>
+    <div class="dz-main">거래명세서B.xls</div>
+    <div class="dz-hint" id="hint-b">파일을 끌어다 놓거나 클릭하세요</div>
+  </div>
+
+  <div class="sec-label">② 수납데이터 <span class="badge">.xls</span></div>
+  <div class="drop-zone" id="zone-a"
+       ondragover="onDrag(event,'a')" ondragleave="onLeave('a')" ondrop="onDrop(event,'a')">
+    <input type="file" accept=".xls,.xlsx" onchange="onFile(event,'a')">
+    <div class="dz-icon" id="icon-a">🏦</div>
+    <div class="dz-main">수납A.xls</div>
+    <div class="dz-hint" id="hint-a">파일을 끌어다 놓거나 클릭하세요</div>
+  </div>
+
+  <div class="sec-label">③ 월말업체 계산서현황 <span class="badge">.xlsx</span></div>
+  <div class="drop-zone" id="zone-c"
+       ondragover="onDrag(event,'c')" ondragleave="onLeave('c')" ondrop="onDrop(event,'c')">
+    <input type="file" accept=".xlsx" onchange="onFile(event,'c')">
+    <div class="dz-icon" id="icon-c">📅</div>
+    <div class="dz-main">월말업체C.xlsx</div>
+    <div class="dz-hint" id="hint-c">파일을 끌어다 놓거나 클릭하세요</div>
+  </div>
+
+  <div class="sec-label">④ 설정</div>
+  <div class="settings-box">
+
+    <div class="field-row">
+      <label>기준일
+        <span class="info-dot" title="개월수 계산 기준이 되는 날짜입니다. 이 날짜를 기준으로 세금계산서 작성표시일로부터 며칠 지났는지 계산합니다.">i</span>
+      </label>
+      <input type="date" id="ref-date">
+    </div>
+    <div class="example-note">
+      💡 개월수는 <b>만 개월 기준으로 버림</b> 처리됩니다.<br>
+      예시: 작성표시일 <b>2026-03-15</b>, 기준일 <b>2026-09-14</b> → 3/15 기준 아직 6개월이 채 지나지 않았으므로 <b>5개월 경과</b>로 계산됩니다.
+    </div>
+
+    <div class="sec-label" style="margin-top:18px;">연체개월별 배경색</div>
+    <div class="color-scale">
+      <div class="field-row"><label>1개월 경과</label><input type="color" id="col-m1" value="#FF0000"></div>
+      <div class="field-row"><label>2개월 경과</label><input type="color" id="col-m2" value="#FFA500"></div>
+      <div class="field-row"><label>3개월 경과</label><input type="color" id="col-m3" value="#FFFF00"></div>
+      <div class="field-row"><label>4개월 경과</label><input type="color" id="col-m4" value="#00B050"></div>
+      <div class="field-row"><label>5개월 경과</label><input type="color" id="col-m5" value="#0070C0"></div>
+      <div class="field-row"><label>6개월 이상</label><input type="color" id="col-m6" value="#7030A0"></div>
+    </div>
+
+    <div class="sec-label" style="margin-top:18px;">업체구분별 글자 스타일</div>
+    <div class="cat-row">
+      <span class="cat-name">일반업체</span>
+      <label class="bold-toggle"><input type="checkbox" id="bold-normal" checked> 볼드</label>
+      <input type="color" id="col-normal" value="#FF66B2">
+    </div>
+    <div class="cat-row">
+      <span class="cat-name">기존업체 <span class="info-dot" title="이전 분기부터 이어져 내려온 미수금이 있는 업체">i</span></span>
+      <label class="bold-toggle"><input type="checkbox" id="bold-carry" checked> 볼드</label>
+      <input type="color" id="col-carry" value="#00B0F0">
+    </div>
+    <div class="cat-row">
+      <span class="cat-name">월말업체</span>
+      <label class="bold-toggle"><input type="checkbox" id="bold-monthend" checked> 볼드</label>
+      <input type="color" id="col-monthend" value="#FFD700">
+    </div>
+
+  </div>
+
+  <div class="filename-row">
+    <div class="sec-label">⑤ 파일명</div>
+    <input type="text" id="filename" placeholder="예: 2026년 2분기 미수금">
+    <div class="ext-hint">확장자(.xlsx)는 자동으로 붙습니다</div>
+  </div>
+
+  <div class="prog-wrap" id="prog-wrap"><div class="prog-bar" id="prog-bar"></div></div>
+
+  <button class="btn-primary" id="btn-run" onclick="runProcess()" disabled>
+    ▶ &nbsp;처리 시작하기
+  </button>
+  <button class="btn-dl" id="btn-dl" onclick="doDownload()">⬇ 다운로드</button>
+
+  <div class="log-box" id="log"></div>
+
+  <div class="note">
+    💡 <b>처리 내용:</b> 거래명세서 중 수납일이 비어있는(미수금) 건만 추출 → 월말업체(파일③) / 기존업체(작성표시일이 기준일이 속한 분기보다 이전) / 일반업체로 자동 분류 →
+    연체개월수·업체구분에 따라 색상 적용 → 수납데이터(파일②)에 같은 업체의 최근 입금내역이 있으면 비고란에 "확인필요"로 표시(자동 제외는 하지 않음) →
+    업체명순으로 정렬해 요약 파일 생성. 모든 처리는 브라우저 안에서만 이루어지고 파일은 어디에도 전송되지 않습니다.
+  </div>
+</div>
+
+<script>
+const files = { a: null, b: null, c: null };
+let outWorkbook = null;
+
+document.getElementById('ref-date').valueAsDate = new Date();
+
+// ── 업로드 ──
+function onDrag(e, k) { e.preventDefault(); document.getElementById('zone-'+k).classList.add('dragover'); }
+function onLeave(k)   { document.getElementById('zone-'+k).classList.remove('dragover'); }
+function onDrop(e, k) { e.preventDefault(); onLeave(k); loadFile(e.dataTransfer.files[0], k); }
+function onFile(e, k) { loadFile(e.target.files[0], k); }
+
+function loadFile(f, k) {
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    files[k] = { name: f.name, data: new Uint8Array(ev.target.result) };
+    document.getElementById('zone-'+k).classList.add('loaded');
+    document.getElementById('icon-'+k).textContent = '✅';
+    document.getElementById('hint-'+k).innerHTML = `<span class="file-badge">✓ ${f.name}</span>`;
+    checkReady();
+  };
+  reader.readAsArrayBuffer(f);
+}
+function checkReady() {
+  document.getElementById('btn-run').disabled = !(files.a && files.b && files.c);
+}
+
+// ── 로그 ──
+function log(msg, cls) {
+  const box = document.getElementById('log');
+  box.classList.add('show');
+  const d = document.createElement('div');
+  if (cls) d.className = cls;
+  d.textContent = msg;
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+}
+function setProgress(p) {
+  document.getElementById('prog-wrap').classList.add('show');
+  document.getElementById('prog-bar').style.width = p + '%';
+}
+
+// ── 파일 파싱 (html 위장 xls / 진짜 xlsx 모두 지원) ──
+function looksLikeHtml(bytes) {
+  let s = '';
+  const n = Math.min(bytes.length, 1000);
+  for (let i=0;i<n;i++) s += String.fromCharCode(bytes[i]);
+  return /<html|<table/i.test(s);
+}
+function parseHtmlTable(text) {
+  const doc = new DOMParser().parseFromString(text, 'text/html');
+  const table = doc.querySelector('table');
+  if (!table) return [];
+  const trs = [...table.querySelectorAll('tr')];
+  if (trs.length === 0) return [];
+  const headers = [...trs[0].querySelectorAll('th,td')].map(td => td.textContent.trim());
+  const rows = [];
+  for (let i=1;i<trs.length;i++){
+    const cells = [...trs[i].querySelectorAll('th,td')].map(td => td.textContent.trim());
+    if (cells.every(c=>c==='')) continue;
+    const obj = {};
+    headers.forEach((h,idx)=> obj[h] = cells[idx] !== undefined ? cells[idx] : '');
+    rows.push(obj);
+  }
+  return rows;
+}
+function readRows(uint8) {
+  if (looksLikeHtml(uint8)) {
+    const text = new TextDecoder('utf-8').decode(uint8);
+    return parseHtmlTable(text);
+  } else {
+    const wb = XLSX.read(uint8, {type:'array'});
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    return XLSX.utils.sheet_to_json(ws, {defval:''});
+  }
+}
+
+// ── 유틸 ──
+function normNameKey(s) { return String(s||'').replace(/\s+/g,'').trim(); }
+function toNum(v) {
+  if (v === null || v === undefined || v === '') return 0;
+  if (typeof v === 'number') return v;
+  const n = parseFloat(String(v).replace(/,/g,'').trim());
+  return isNaN(n) ? 0 : n;
+}
+function parseYMD(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (v instanceof Date) return {y:v.getFullYear(), m:v.getMonth()+1, d:v.getDate()};
+  const s = String(v).trim();
+  const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return {y:+m[1], m:+m[2], d:+m[3]};
+  const num = parseFloat(s);
+  if (!isNaN(num) && num > 20000 && num < 60000 && XLSX.SSF && XLSX.SSF.parse_date_code) {
+    const d = XLSX.SSF.parse_date_code(num);
+    if (d) return {y:d.y, m:d.m, d:d.d};
+  }
+  return null;
+}
+function fmtYMD(ymd) {
+  return `${ymd.y}-${String(ymd.m).padStart(2,'0')}-${String(ymd.d).padStart(2,'0')}`;
+}
+function monthsElapsed(issue, ref) {
+  if (!issue || !ref) return 0;
+  let months = (ref.y - issue.y)*12 + (ref.m - issue.m);
+  if (ref.d < issue.d) months -= 1;
+  return Math.max(0, months);
+}
+function quarterKey(ymd) { return ymd.y*10 + Math.ceil(ymd.m/3); }
+function hexToARGB(hex) { return 'FF' + String(hex).replace('#','').toUpperCase(); }
+
+function pickField(row, ...names) {
+  for (const n of names) {
+    if (row[n] !== undefined && String(row[n]).trim() !== '') return row[n];
+  }
+  return '';
+}
+
+// ── 메인 처리 ──
+async function runProcess() {
+  document.getElementById('btn-run').disabled = true;
+  document.getElementById('btn-dl').classList.remove('show');
+  document.getElementById('log').innerHTML = '';
+  setProgress(5);
+
+  try {
+    log('📂 파일 읽는 중...', 'log-info');
+    const bRows = readRows(files.b.data);
+    const aRows = readRows(files.a.data);
+    const cRows = readRows(files.c.data);
+    log(`  ✓ 거래명세서 ${bRows.length}건 / 수납 ${aRows.length}건 / 월말업체 ${cRows.length}개사`, 'log-ok');
+    setProgress(20);
+
+    const settings = {
+      refDateStr: document.getElementById('ref-date').value,
+      m1: document.getElementById('col-m1').value,
+      m2: document.getElementById('col-m2').value,
+      m3: document.getElementById('col-m3').value,
+      m4: document.getElementById('col-m4').value,
+      m5: document.getElementById('col-m5').value,
+      m6: document.getElementById('col-m6').value,
+      catNormal: document.getElementById('col-normal').value,
+      catNormalBold: document.getElementById('bold-normal').checked,
+      catCarry: document.getElementById('col-carry').value,
+      catCarryBold: document.getElementById('bold-carry').checked,
+      catMonthend: document.getElementById('col-monthend').value,
+      catMonthendBold: document.getElementById('bold-monthend').checked,
+    };
+    const refYMD = parseYMD(settings.refDateStr) || parseYMD(new Date().toISOString().slice(0,10));
+    const refQ = quarterKey(refYMD);
+
+    log('🔍 미수금 대상 추출 중 (수납일 공란 기준)...', 'log-info');
+    const candidates = bRows.filter(r => !String(pickField(r,'수납일')).trim());
+    log(`  ✓ ${candidates.length}건 추출`, 'log-ok');
+    setProgress(35);
+
+    // 기존업체(이전 분기부터 이어진 미수금) 판정
+    const carryoverSet = new Set();
+    candidates.forEach(r => {
+      const issue = parseYMD(pickField(r, '세금계산서(작성표시일)', '거래명세서 발행일'));
+      if (issue && quarterKey(issue) < refQ) carryoverSet.add(normNameKey(pickField(r,'업체명')));
+    });
+
+    // 월말업체 맵 (파일C 우선)
+    const monthEndMap = {};
+    cRows.forEach(r => {
+      const key = normNameKey(pickField(r,'업체명'));
+      if (key) monthEndMap[key] = pickField(r,'담당자');
+    });
+    log(`  ✓ 월말업체 ${Object.keys(monthEndMap).length}개사 확인`, 'log-ok');
+
+    // 수납데이터(A) 맵: 업체 -> 최근 입금내역
+    const aMap = {};
+    aRows.forEach(r => {
+      const key = normNameKey(pickField(r,'업체명'));
+      if (!key) return;
+      (aMap[key] = aMap[key] || []).push({
+        date: pickField(r,'수금일자'),
+        amount: toNum(pickField(r,'수금액'))
+      });
+    });
+    setProgress(50);
+
+    log('⚙️  업체 분류·색상 계산 중...', 'log-info');
+    let flagged = 0;
+    const outRows = candidates.map(r => {
+      const name = pickField(r,'업체명');
+      const key = normNameKey(name);
+      const issueRaw = pickField(r, '세금계산서(작성표시일)', '거래명세서 발행일');
+      const issue = parseYMD(issueRaw);
+      const months = issue ? monthsElapsed(issue, refYMD) : 0;
+
+      let category = '일반업체';
+      if (monthEndMap[key] !== undefined) category = '월말업체';
+      else if (carryoverSet.has(key)) category = '기존업체';
+
+      const 담당자 = category === '월말업체'
+        ? (monthEndMap[key] || '')
+        : pickField(r, '세금계산서 발행자', '거래명세서 발행자');
+
+      let 비고 = pickField(r,'비고');
+      const receipts = aMap[key];
+      if (receipts && receipts.length) {
+        flagged++;
+        const noteStr = receipts.slice(0,3).map(x => `${x.date} ${x.amount.toLocaleString()}원`).join(', ');
+        비고 = (비고 ? 비고 + ' / ' : '') + `⚠입금내역 확인필요: ${noteStr}`;
+      }
+
+      return {
+        작성일자: issue ? fmtYMD(issue) : issueRaw,
+        업체명: name,
+        Total금액: toNum(pickField(r,'합계')),
+        공급가액: toNum(pickField(r,'공급가액')),
+        세액: toNum(pickField(r,'세액')),
+        소급비: toNum(pickField(r,'소급비')),
+        출장비: toNum(pickField(r,'출장비')),
+        DC금액: toNum(pickField(r,'할인금액')),
+        수납일자: '',
+        수납금액: '',
+        미수납금액: toNum(pickField(r,'미수금')),
+        합계: toNum(pickField(r,'합계')),
+        담당자,
+        비고,
+        _months: months,
+        _category: category,
+        _key: key
+      };
+    });
+    log(`  ✓ 월말 ${outRows.filter(r=>r._category==='월말업체').length}건 / 기존 ${outRows.filter(r=>r._category==='기존업체').length}건 / 일반 ${outRows.filter(r=>r._category==='일반업체').length}건`, 'log-ok');
+    if (flagged) log(`  ⚠ 입금내역 확인 필요 ${flagged}건 (비고란 표시, 자동 제외하지 않음)`, 'log-warn');
+    setProgress(65);
+
+    // 정렬: 업체명 오름차순 → 작성일자 오름차순
+    outRows.sort((x,y) => x.업체명.localeCompare(y.업체명,'ko') || String(x.작성일자).localeCompare(String(y.작성일자)));
+
+    // 업체별 합계 컬럼: 그룹 첫 행에만 소계 표시
+    const seen = new Set();
+    const companyTotal = {};
+    outRows.forEach(r => { companyTotal[r._key] = (companyTotal[r._key]||0) + r.미수납금액; });
+    outRows.forEach(r => {
+      if (!seen.has(r._key)) { seen.add(r._key); r.합계 = companyTotal[r._key]; }
+      else { r.합계 = ''; }
+    });
+    setProgress(75);
+
+    log('📝 엑셀 파일 생성 중...', 'log-info');
+    const headers = ['작성일자','업체명','Total금액','공급가액','세액','소급비','출장비','DC금액','수납일자','수납금액','미수납금액','합계','담당자','비고'];
+    const aoa = [headers, ...outRows.map(r => [
+      r.작성일자, r.업체명, r.Total금액, r.공급가액, r.세액, r.소급비, r.출장비, r.DC금액,
+      r.수납일자, r.수납금액, r.미수납금액, r.합계, r.담당자, r.비고
+    ])];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    const bucketColorMap = { 1: settings.m1, 2: settings.m2, 3: settings.m3, 4: settings.m4, 5: settings.m5 };
+    outRows.forEach((r, i) => {
+      const rowIdx = i + 1;
+      const fillHex = r._months <= 0 ? null : (bucketColorMap[r._months] || settings.m6);
+      for (let c = 0; c < headers.length; c++) {
+        const addr = XLSX.utils.encode_cell({ r: rowIdx, c });
+        if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+        ws[addr].s = ws[addr].s || {};
+        if (fillHex) ws[addr].s.fill = { patternType: 'solid', fgColor: { rgb: hexToARGB(fillHex) } };
+      }
+      const nameAddr = XLSX.utils.encode_cell({ r: rowIdx, c: 1 });
+      const catColor = r._category === '월말업체' ? settings.catMonthend
+                      : r._category === '기존업체' ? settings.catCarry
+                      : settings.catNormal;
+      const catBold = r._category === '월말업체' ? settings.catMonthendBold
+                     : r._category === '기존업체' ? settings.catCarryBold
+                     : settings.catNormalBold;
+      ws[nameAddr].s.font = { bold: !!catBold, color: { rgb: hexToARGB(catColor) } };
+    });
+    ws['!cols'] = headers.map(() => ({ wch: 14 }));
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '미수금');
+    outWorkbook = wb;
+    setProgress(100);
+    log(`✅ 완료 — 총 ${outRows.length}건 생성`, 'log-ok');
+
+    document.getElementById('btn-dl').classList.add('show');
+
+  } catch (err) {
+    log('❌ 오류: ' + err.message, 'log-err');
+    console.error(err);
+  }
+  document.getElementById('btn-run').disabled = false;
+}
+
+function doDownload() {
+  if (!outWorkbook) return;
+  let name = document.getElementById('filename').value.trim();
+  if (!name) name = '미수금_정리_' + new Date().toISOString().slice(0,10);
+  if (!name.toLowerCase().endsWith('.xlsx')) name += '.xlsx';
+  XLSX.writeFile(outWorkbook, name, { cellStyles: true });
+}
+</script>
+</body>
+</html>
