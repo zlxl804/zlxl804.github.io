@@ -178,6 +178,13 @@ h1 { font-size: 21px; font-weight: 700; color: #1a202c; }
       예시: 작성표시일 <b>2026-03-15</b>, 기준일 <b>2026-09-14</b> → 3/15 기준 아직 6개월이 채 지나지 않았으므로 <b>5개월 경과</b>로 계산됩니다.
     </div>
 
+    <div class="field-row" style="align-items:flex-start; margin-top:10px;">
+      <label style="padding-top:6px;">제목(1행)
+        <span class="info-dot" title="엑셀 1행에 들어갈 제목입니다. 기준일을 바꾸면 자동으로 갱신되고, 직접 수정하면 그 이후로는 자동 갱신을 멈춥니다.">i</span>
+      </label>
+      <input type="text" id="report-title" style="flex:1;">
+    </div>
+
     <div class="sec-label" style="margin-top:18px;">연체개월별 배경색</div>
     <div class="color-scale">
       <div class="field-row"><label>1개월 경과</label><input type="color" id="col-m1" value="#FF0000"></div>
@@ -228,6 +235,7 @@ h1 { font-size: 21px; font-weight: 700; color: #1a202c; }
     연체개월수·업체구분에 따라 색상 적용 → 수납데이터(파일②)에 같은 업체의 최근 입금내역이 있으면(미수납 건에 한해) 비고란에 "확인필요"로 표시(자동 제외는 하지 않음) →
     업체명순 정렬 → 요약 파일 생성. 전체 폰트는 굴림체 8pt로 원본 템플릿에 맞췄습니다.
     "합계" 컬럼은 같은 업체가 연속된 행들의 미수납금액을 합산해 마지막 행에 표시합니다.
+    1행에는 제목(20pt 굴림, 직접 수정 가능), 5행부터 헤더·데이터가 시작되고 D~H열(공급가액~DC금액)은 숨김 처리됩니다.
     <br><br>
     모든 처리는 브라우저 안에서만 이루어지고 파일은 어디에도 전송되지 않습니다.
   </div>
@@ -238,6 +246,23 @@ const files = { a: null, b: null, c: null };
 let outWorkbook = null;
 
 document.getElementById('ref-date').valueAsDate = new Date();
+
+// ── 제목(1행) 자동 생성 ──
+let titleEdited = false;
+function quarterOfMonth(m) { return Math.ceil(m/3); }
+function computeDefaultTitle() {
+  const ymd = parseYMD(document.getElementById('ref-date').value);
+  if (!ymd) return '';
+  const q = quarterOfMonth(ymd.m);
+  return `${ymd.y}년 ${q}분기 미수금 내역 (${ymd.y}년 ${ymd.m}월${ymd.d}일 기준)`;
+}
+function refreshDefaultTitle() {
+  if (titleEdited) return;
+  document.getElementById('report-title').value = computeDefaultTitle();
+}
+document.getElementById('report-title').addEventListener('input', () => { titleEdited = true; });
+document.getElementById('ref-date').addEventListener('change', refreshDefaultTitle);
+refreshDefaultTitle();
 
 // ── 업로드 ──
 function onDrag(e, k) { e.preventDefault(); document.getElementById('zone-'+k).classList.add('dragover'); }
@@ -490,19 +515,34 @@ async function runProcess() {
 
     log('📝 엑셀 파일 생성 중 (굴림체 8pt 템플릿 적용)...', 'log-info');
     const headers = ['작성일자','업체명','Total금액','공급가액','세액','소급비','출장비','DC금액','수납일자','수납금액','미수납금액','합계','담당자','비고'];
-    const aoa = [headers, ...outRows.map(r => [
-      r.작성일자, r.업체명, r.Total금액, r.공급가액, r.세액, r.소급비, r.출장비, r.DC금액,
-      r.수납일자, r.수납금액, r.미수납금액, r.합계, r.담당자, r.비고
-    ])];
+    const HEADER_ROW = 4;      // 0-based → 실제 5행
+    const DATA_START = 5;      // 0-based → 실제 6행
+    const reportTitle = document.getElementById('report-title').value.trim() || computeDefaultTitle();
+
+    const aoa = [
+      [reportTitle],
+      [],
+      [],
+      [],
+      headers,
+      ...outRows.map(r => [
+        r.작성일자, r.업체명, r.Total금액, r.공급가액, r.세액, r.소급비, r.출장비, r.DC금액,
+        r.수납일자, r.수납금액, r.미수납금액, r.합계, r.담당자, r.비고
+      ])
+    ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
 
     const BASE_FONT = { name: 'Gulimche', sz: 8 };
     const NUMFMT = '#,##0';
     const numericCols = [2,3,4,5,6,7,9,10,11]; // Total금액~DC금액, 수납금액,미수납금액,합계 (0-based)
 
-    // 헤더 스타일
+    // 제목(1행) 스타일
+    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }];
+    ws['A1'].s = { font: { name: 'Gulim', sz: 20 } };
+
+    // 헤더 스타일 (5행)
     for (let c = 0; c < headers.length; c++) {
-      const addr = XLSX.utils.encode_cell({ r: 0, c });
+      const addr = XLSX.utils.encode_cell({ r: HEADER_ROW, c });
       ws[addr].s = {
         font: { ...BASE_FONT, bold: true },
         alignment: { horizontal: 'center', vertical: 'center' },
@@ -515,7 +555,7 @@ async function runProcess() {
 
     const bucketColorMap = { 1: settings.m1, 2: settings.m2, 3: settings.m3, 4: settings.m4, 5: settings.m5 };
     outRows.forEach((r, i) => {
-      const rowIdx = i + 1;
+      const rowIdx = DATA_START + i;
       const fillHex = r._months <= 0 ? null : (bucketColorMap[r._months] || settings.m6);
       for (let c = 0; c < headers.length; c++) {
         const addr = XLSX.utils.encode_cell({ r: rowIdx, c });
@@ -537,14 +577,15 @@ async function runProcess() {
       ws[nameAddr].s.font = { ...BASE_FONT, bold: !!catBold, color: { rgb: hexToARGB(catColor) } };
     });
 
-    // 컬럼 너비 (참고 템플릿 기준)
+    // 컬럼 너비 (참고 템플릿 기준) — D~H(공급가액~DC금액)는 숨김 처리
     ws['!cols'] = [
-      { wch: 10.875 }, { wch: 22.25 }, { wch: 11.125 }, { wch: 9 }, { wch: 9 },
-      { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 11 }, { wch: 11 },
+      { wch: 10.875 }, { wch: 22.25 }, { wch: 11.125 },
+      { wch: 9, hidden: true }, { wch: 9, hidden: true }, { wch: 9, hidden: true }, { wch: 9, hidden: true }, { wch: 9, hidden: true },
+      { wch: 11 }, { wch: 11 },
       { wch: 12 }, { wch: 13.875 }, { wch: 9 }, { wch: 39.375 }
     ];
-    ws['!freeze'] = { xSplit: 0, ySplit: 1 };
-    ws['!rows'] = [{ hpt: 18 }].concat(outRows.map(() => ({ hpt: 18 })));
+    ws['!freeze'] = { xSplit: 0, ySplit: DATA_START };
+    ws['!rows'] = [{ hpt: 37 }, {}, {}, {}, { hpt: 18 }].concat(outRows.map(() => ({ hpt: 18 })));
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '미수금');
