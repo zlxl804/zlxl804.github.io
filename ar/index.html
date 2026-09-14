@@ -223,9 +223,14 @@ h1 { font-size: 21px; font-weight: 700; color: #1a202c; }
   <div class="log-box" id="log"></div>
 
   <div class="note">
-    💡 <b>처리 내용:</b> 거래명세서 중 수납일이 비어있는(미수금) 건만 추출 → 월말업체(파일③) / 기존업체(작성표시일이 기준일이 속한 분기보다 이전) / 일반업체로 자동 분류 →
-    연체개월수·업체구분에 따라 색상 적용 → 수납데이터(파일②)에 같은 업체의 최근 입금내역이 있으면 비고란에 "확인필요"로 표시(자동 제외는 하지 않음) →
-    업체명순으로 정렬해 요약 파일 생성. 모든 처리는 브라우저 안에서만 이루어지고 파일은 어디에도 전송되지 않습니다.
+    💡 <b>처리 내용:</b> 거래명세서 전체 건을 대상으로, 수납일이 있으면 수납일자/수납금액을 채우고 미수납금액=0, 없으면 미수납금액=Total금액으로 채웁니다 →
+    월말업체(파일③) / 기존업체(수납 안 된 채 기준일이 속한 분기보다 이전 발행분이 있는 업체) / 일반업체로 자동 분류 →
+    연체개월수·업체구분에 따라 색상 적용 → 수납데이터(파일②)에 같은 업체의 최근 입금내역이 있으면(미수납 건에 한해) 비고란에 "확인필요"로 표시(자동 제외는 하지 않음) →
+    업체명순 정렬 → 요약 파일 생성. 전체 폰트는 굴림체 8pt로 원본 템플릿에 맞췄습니다.
+    <br><br>
+    ⚠ <b>"합계" 컬럼은 업체별 미수납 합계를 마지막 행에 표시하는 잠정 규칙입니다</b> — 실제 템플릿과 다르면 알려주세요.
+    <br><br>
+    모든 처리는 브라우저 안에서만 이루어지고 파일은 어디에도 전송되지 않습니다.
   </div>
 </div>
 
@@ -380,14 +385,15 @@ async function runProcess() {
     const refYMD = parseYMD(settings.refDateStr) || parseYMD(new Date().toISOString().slice(0,10));
     const refQ = quarterKey(refYMD);
 
-    log('🔍 미수금 대상 추출 중 (수납일 공란 기준)...', 'log-info');
-    const candidates = bRows.filter(r => !String(pickField(r,'수납일')).trim());
-    log(`  ✓ ${candidates.length}건 추출`, 'log-ok');
+    log('🔍 거래명세서 전체 건 처리 중 (수납여부 무관)...', 'log-info');
+    const candidates = bRows;
     setProgress(35);
 
-    // 기존업체(이전 분기부터 이어진 미수금) 판정
+    // 기존업체(이전 분기부터 이어진 "미수납" 건) 판정 — 수납 완료된 건은 carryover 판정에서 제외
     const carryoverSet = new Set();
     candidates.forEach(r => {
+      const isPaid = !!String(pickField(r,'수납일')).trim();
+      if (isPaid) return;
       const issue = parseYMD(pickField(r, '세금계산서(작성표시일)', '거래명세서 발행일'));
       if (issue && quarterKey(issue) < refQ) carryoverSet.add(normNameKey(pickField(r,'업체명')));
     });
@@ -413,13 +419,19 @@ async function runProcess() {
     setProgress(50);
 
     log('⚙️  업체 분류·색상 계산 중...', 'log-info');
-    let flagged = 0;
+    let flagged = 0, paidCount = 0, unpaidCount = 0;
     const outRows = candidates.map(r => {
       const name = pickField(r,'업체명');
       const key = normNameKey(name);
       const issueRaw = pickField(r, '세금계산서(작성표시일)', '거래명세서 발행일');
       const issue = parseYMD(issueRaw);
       const months = issue ? monthsElapsed(issue, refYMD) : 0;
+      const total = toNum(pickField(r,'합계'));
+
+      const receiveDateRaw = pickField(r,'수납일');
+      const isPaid = !!String(receiveDateRaw).trim();
+      const receiveDate = isPaid ? parseYMD(receiveDateRaw) : null;
+      if (isPaid) paidCount++; else unpaidCount++;
 
       let category = '일반업체';
       if (monthEndMap[key] !== undefined) category = '월말업체';
@@ -431,56 +443,76 @@ async function runProcess() {
 
       let 비고 = pickField(r,'비고');
       const receipts = aMap[key];
-      if (receipts && receipts.length) {
+      if (!isPaid && receipts && receipts.length) {
         flagged++;
         const noteStr = receipts.slice(0,3).map(x => `${x.date} ${x.amount.toLocaleString()}원`).join(', ');
         비고 = (비고 ? 비고 + ' / ' : '') + `⚠입금내역 확인필요: ${noteStr}`;
       }
 
       return {
-        작성일자: issue ? fmtYMD(issue) : issueRaw,
+        작성일자: issue ? new Date(issue.y, issue.m - 1, issue.d) : issueRaw,
         업체명: name,
-        Total금액: toNum(pickField(r,'합계')),
+        Total금액: total,
         공급가액: toNum(pickField(r,'공급가액')),
         세액: toNum(pickField(r,'세액')),
         소급비: toNum(pickField(r,'소급비')),
         출장비: toNum(pickField(r,'출장비')),
         DC금액: toNum(pickField(r,'할인금액')),
-        수납일자: '',
-        수납금액: '',
-        미수납금액: toNum(pickField(r,'미수금')),
-        합계: toNum(pickField(r,'합계')),
+        수납일자: isPaid && receiveDate ? new Date(receiveDate.y, receiveDate.m - 1, receiveDate.d) : '',
+        수납금액: isPaid ? total : '',
+        미수납금액: isPaid ? 0 : total,
+        합계: '',
         담당자,
         비고,
-        _months: months,
+        _months: isPaid ? 0 : months,
         _category: category,
-        _key: key
+        _key: key,
+        _isPaid: isPaid
       };
     });
+    log(`  ✓ 총 ${outRows.length}건 (수납완료 ${paidCount} / 미수납 ${unpaidCount})`, 'log-ok');
     log(`  ✓ 월말 ${outRows.filter(r=>r._category==='월말업체').length}건 / 기존 ${outRows.filter(r=>r._category==='기존업체').length}건 / 일반 ${outRows.filter(r=>r._category==='일반업체').length}건`, 'log-ok');
     if (flagged) log(`  ⚠ 입금내역 확인 필요 ${flagged}건 (비고란 표시, 자동 제외하지 않음)`, 'log-warn');
     setProgress(65);
 
     // 정렬: 업체명 오름차순 → 작성일자 오름차순
-    outRows.sort((x,y) => x.업체명.localeCompare(y.업체명,'ko') || String(x.작성일자).localeCompare(String(y.작성일자)));
+    const dateVal = d => d instanceof Date ? d.getTime() : 0;
+    outRows.sort((x,y) => x.업체명.localeCompare(y.업체명,'ko') || (dateVal(x.작성일자) - dateVal(y.작성일자)));
 
-    // 업체별 합계 컬럼: 그룹 첫 행에만 소계 표시
-    const seen = new Set();
+    // 업체별 합계 컬럼: 그룹 마지막 행에 해당 업체 미수납 합계 표시 (※ 잠정 규칙 — 확인 후 조정 예정)
     const companyTotal = {};
     outRows.forEach(r => { companyTotal[r._key] = (companyTotal[r._key]||0) + r.미수납금액; });
-    outRows.forEach(r => {
-      if (!seen.has(r._key)) { seen.add(r._key); r.합계 = companyTotal[r._key]; }
-      else { r.합계 = ''; }
+    const lastIdxOfKey = {};
+    outRows.forEach((r, i) => { lastIdxOfKey[r._key] = i; });
+    outRows.forEach((r, i) => {
+      if (lastIdxOfKey[r._key] === i) r.합계 = companyTotal[r._key];
     });
     setProgress(75);
 
-    log('📝 엑셀 파일 생성 중...', 'log-info');
+    log('📝 엑셀 파일 생성 중 (굴림체 8pt 템플릿 적용)...', 'log-info');
     const headers = ['작성일자','업체명','Total금액','공급가액','세액','소급비','출장비','DC금액','수납일자','수납금액','미수납금액','합계','담당자','비고'];
     const aoa = [headers, ...outRows.map(r => [
       r.작성일자, r.업체명, r.Total금액, r.공급가액, r.세액, r.소급비, r.출장비, r.DC금액,
       r.수납일자, r.수납금액, r.미수납금액, r.합계, r.담당자, r.비고
     ])];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    const BASE_FONT = { name: 'Gulimche', sz: 8 };
+    const NUMFMT = '#,##0';
+    const numericCols = [2,3,4,5,6,7,9,10,11]; // Total금액~DC금액, 수납금액,미수납금액,합계 (0-based)
+
+    // 헤더 스타일
+    for (let c = 0; c < headers.length; c++) {
+      const addr = XLSX.utils.encode_cell({ r: 0, c });
+      ws[addr].s = {
+        font: { ...BASE_FONT, bold: true },
+        alignment: { horizontal: 'center', vertical: 'center' },
+        border: {
+          top: { style: 'thin' }, bottom: { style: 'thin' },
+          left: { style: 'thin' }, right: { style: 'thin' }
+        }
+      };
+    }
 
     const bucketColorMap = { 1: settings.m1, 2: settings.m2, 3: settings.m3, 4: settings.m4, 5: settings.m5 };
     outRows.forEach((r, i) => {
@@ -490,7 +522,11 @@ async function runProcess() {
         const addr = XLSX.utils.encode_cell({ r: rowIdx, c });
         if (!ws[addr]) ws[addr] = { t: 's', v: '' };
         ws[addr].s = ws[addr].s || {};
+        ws[addr].s.font = { ...BASE_FONT };
         if (fillHex) ws[addr].s.fill = { patternType: 'solid', fgColor: { rgb: hexToARGB(fillHex) } };
+        if (numericCols.includes(c)) ws[addr].z = NUMFMT;
+        if (c === 0) ws[addr].z = 'mm-dd-yy';
+        if (c === 8) ws[addr].z = 'yyyy-mm-dd';
       }
       const nameAddr = XLSX.utils.encode_cell({ r: rowIdx, c: 1 });
       const catColor = r._category === '월말업체' ? settings.catMonthend
@@ -499,9 +535,17 @@ async function runProcess() {
       const catBold = r._category === '월말업체' ? settings.catMonthendBold
                      : r._category === '기존업체' ? settings.catCarryBold
                      : settings.catNormalBold;
-      ws[nameAddr].s.font = { bold: !!catBold, color: { rgb: hexToARGB(catColor) } };
+      ws[nameAddr].s.font = { ...BASE_FONT, bold: !!catBold, color: { rgb: hexToARGB(catColor) } };
     });
-    ws['!cols'] = headers.map(() => ({ wch: 14 }));
+
+    // 컬럼 너비 (참고 템플릿 기준)
+    ws['!cols'] = [
+      { wch: 10.875 }, { wch: 22.25 }, { wch: 11.125 }, { wch: 9 }, { wch: 9 },
+      { wch: 9 }, { wch: 9 }, { wch: 9 }, { wch: 11 }, { wch: 11 },
+      { wch: 12 }, { wch: 13.875 }, { wch: 9 }, { wch: 39.375 }
+    ];
+    ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+    ws['!rows'] = [{ hpt: 18 }].concat(outRows.map(() => ({ hpt: 18 })));
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, '미수금');
