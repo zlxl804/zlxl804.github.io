@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>미수금 분기별 정리 파일 생성기</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -325,14 +325,34 @@ function parseHtmlTable(text) {
   }
   return rows;
 }
-function readRows(uint8) {
+async function readRows(uint8) {
   if (looksLikeHtml(uint8)) {
     const text = new TextDecoder('utf-8').decode(uint8);
     return parseHtmlTable(text);
   } else {
-    const wb = XLSX.read(uint8, {type:'array'});
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    return XLSX.utils.sheet_to_json(ws, {defval:''});
+    const wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(uint8.buffer);
+    const ws = wb.worksheets[0];
+    const headers = [];
+    ws.getRow(1).eachCell({ includeEmpty: true }, (cell, colNumber) => {
+      headers[colNumber] = String(cell.value ?? '').trim();
+    });
+    const rows = [];
+    for (let r = 2; r <= ws.rowCount; r++) {
+      const row = ws.getRow(r);
+      const obj = {};
+      let hasVal = false;
+      headers.forEach((h, colNumber) => {
+        if (!h) return;
+        const cell = row.getCell(colNumber);
+        let v = cell.value;
+        if (v && typeof v === 'object' && !(v instanceof Date) && v.result !== undefined) v = v.result;
+        obj[h] = (v === null || v === undefined) ? '' : v;
+        if (obj[h] !== '') hasVal = true;
+      });
+      if (hasVal) rows.push(obj);
+    }
+    return rows;
   }
 }
 
@@ -351,9 +371,11 @@ function parseYMD(v) {
   const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (m) return {y:+m[1], m:+m[2], d:+m[3]};
   const num = parseFloat(s);
-  if (!isNaN(num) && num > 20000 && num < 60000 && XLSX.SSF && XLSX.SSF.parse_date_code) {
-    const d = XLSX.SSF.parse_date_code(num);
-    if (d) return {y:d.y, m:d.m, d:d.d};
+  if (!isNaN(num) && num > 20000 && num < 60000) {
+    // 엑셀 날짜 일련번호(1900 날짜 체계) 변환
+    const utcMs = Math.round((num - 25569) * 86400 * 1000);
+    const d = new Date(utcMs);
+    return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, d: d.getUTCDate() };
   }
   return null;
 }
@@ -385,9 +407,9 @@ async function runProcess() {
 
   try {
     log('📂 파일 읽는 중...', 'log-info');
-    const bRows = readRows(files.b.data);
-    const aRows = readRows(files.a.data);
-    const cRows = readRows(files.c.data);
+    const bRows = await readRows(files.b.data);
+    const aRows = await readRows(files.a.data);
+    const cRows = await readRows(files.c.data);
     log(`  ✓ 거래명세서 ${bRows.length}건 / 수납 ${aRows.length}건 / 월말업체 ${cRows.length}개사`, 'log-ok');
     setProgress(20);
 
@@ -511,85 +533,85 @@ async function runProcess() {
     outRows.forEach((r, i) => {
       if (lastIdxOfKey[r._key] === i) r.합계 = companyTotal[r._key];
     });
+
+    // 비고(N열) 중복값: 같은 업체 그룹 안에서 동일한 비고 텍스트가 반복되면 마지막 행에만 남김
+    const groupIndices = {};
+    outRows.forEach((r, i) => { (groupIndices[r._key] = groupIndices[r._key] || []).push(i); });
+    Object.values(groupIndices).forEach(idxArr => {
+      const lastSeenIdx = {};
+      idxArr.forEach(i => { if (outRows[i].비고) lastSeenIdx[outRows[i].비고] = i; });
+      idxArr.forEach(i => {
+        const val = outRows[i].비고;
+        if (val && lastSeenIdx[val] !== i) outRows[i].비고 = '';
+      });
+    });
     setProgress(75);
 
     log('📝 엑셀 파일 생성 중 (굴림체 8pt 템플릿 적용)...', 'log-info');
     const headers = ['작성일자','업체명','Total금액','공급가액','세액','소급비','출장비','DC금액','수납일자','수납금액','미수납금액','합계','담당자','비고'];
-    const HEADER_ROW = 4;      // 0-based → 실제 5행
-    const DATA_START = 5;      // 0-based → 실제 6행
+    const HEADER_ROW = 5;
+    const DATA_START = 6;
     const reportTitle = document.getElementById('report-title').value.trim() || computeDefaultTitle();
-
-    const aoa = [
-      [reportTitle],
-      [],
-      [],
-      [],
-      headers,
-      ...outRows.map(r => [
-        r.작성일자, r.업체명, r.Total금액, r.공급가액, r.세액, r.소급비, r.출장비, r.DC금액,
-        r.수납일자, r.수납금액, r.미수납금액, r.합계, r.담당자, r.비고
-      ])
-    ];
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-
-    const BASE_FONT = { name: 'Gulimche', sz: 8 };
-    const NUMFMT = '#,##0';
+    const BASE_FONT = { name: 'Gulimche', size: 8 };
     const numericCols = [2,3,4,5,6,7,9,10,11]; // Total금액~DC금액, 수납금액,미수납금액,합계 (0-based)
 
-    // 제목(1행) 스타일
-    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: headers.length - 1 } }];
-    ws['A1'].s = { font: { name: 'Gulim', sz: 20 } };
+    const wbNew = new ExcelJS.Workbook();
+    const ws = wbNew.addWorksheet('미수금');
 
-    // 헤더 스타일 (5행)
-    for (let c = 0; c < headers.length; c++) {
-      const addr = XLSX.utils.encode_cell({ r: HEADER_ROW, c });
-      ws[addr].s = {
-        font: { ...BASE_FONT, bold: true },
-        alignment: { horizontal: 'center', vertical: 'center' },
-        border: {
-          top: { style: 'thin' }, bottom: { style: 'thin' },
-          left: { style: 'thin' }, right: { style: 'thin' }
-        }
+    // 컬럼 너비 (참고 템플릿 기준) — D~H(공급가액~DC금액)는 숨김 처리
+    const colWidths = [10.875, 22.25, 11.125, 9, 9, 9, 9, 9, 11, 11, 12, 13.875, 9, 39.375];
+    ws.columns = headers.map((h, i) => ({ width: colWidths[i], hidden: i >= 3 && i <= 7 }));
+
+    // 제목(1행)
+    ws.mergeCells(1, 1, 1, headers.length);
+    const titleCell = ws.getCell(1, 1);
+    titleCell.value = reportTitle;
+    titleCell.font = { name: 'Gulim', size: 20, bold: true };
+    ws.getRow(1).height = 37;
+
+    // 헤더 (5행)
+    const headerRow = ws.getRow(HEADER_ROW);
+    headers.forEach((h, i) => {
+      const cell = headerRow.getCell(i + 1);
+      cell.value = h;
+      cell.font = { ...BASE_FONT, bold: true };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.border = {
+        top: { style: 'thin' }, bottom: { style: 'thin' },
+        left: { style: 'thin' }, right: { style: 'thin' }
       };
-    }
+    });
+    headerRow.height = 18;
 
     const bucketColorMap = { 1: settings.m1, 2: settings.m2, 3: settings.m3, 4: settings.m4, 5: settings.m5 };
     outRows.forEach((r, i) => {
-      const rowIdx = DATA_START + i;
+      const rowNum = DATA_START + i;
+      const row = ws.getRow(rowNum);
+      const vals = [r.작성일자, r.업체명, r.Total금액, r.공급가액, r.세액, r.소급비, r.출장비, r.DC금액,
+        r.수납일자, r.수납금액, r.미수납금액, r.합계, r.담당자, r.비고];
       const fillHex = r._months <= 0 ? null : (bucketColorMap[r._months] || settings.m6);
-      for (let c = 0; c < headers.length; c++) {
-        const addr = XLSX.utils.encode_cell({ r: rowIdx, c });
-        if (!ws[addr]) ws[addr] = { t: 's', v: '' };
-        ws[addr].s = ws[addr].s || {};
-        ws[addr].s.font = { ...BASE_FONT };
-        if (fillHex) ws[addr].s.fill = { patternType: 'solid', fgColor: { rgb: hexToARGB(fillHex) } };
-        if (numericCols.includes(c)) ws[addr].z = NUMFMT;
-        if (c === 0) ws[addr].z = 'mm-dd-yy';
-        if (c === 8) ws[addr].z = 'yyyy-mm-dd';
-      }
-      const nameAddr = XLSX.utils.encode_cell({ r: rowIdx, c: 1 });
+      vals.forEach((v, c) => {
+        const cell = row.getCell(c + 1);
+        cell.value = (v === '' ? null : v);
+        cell.font = { ...BASE_FONT };
+        if (fillHex) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hexToARGB(fillHex) } };
+        if (numericCols.includes(c)) cell.numFmt = '#,##0';
+        if (c === 0 || c === 8) cell.numFmt = 'yyyy-mm-dd';
+      });
+      const nameCell = row.getCell(2);
       const catColor = r._category === '월말업체' ? settings.catMonthend
                       : r._category === '기존업체' ? settings.catCarry
                       : settings.catNormal;
       const catBold = r._category === '월말업체' ? settings.catMonthendBold
                      : r._category === '기존업체' ? settings.catCarryBold
                      : settings.catNormalBold;
-      ws[nameAddr].s.font = { ...BASE_FONT, bold: !!catBold, color: { rgb: hexToARGB(catColor) } };
+      nameCell.font = { ...BASE_FONT, bold: !!catBold, color: { argb: hexToARGB(catColor) } };
+      row.height = 18;
     });
 
-    // 컬럼 너비 (참고 템플릿 기준) — D~H(공급가액~DC금액)는 숨김 처리
-    ws['!cols'] = [
-      { wch: 10.875 }, { wch: 22.25 }, { wch: 11.125 },
-      { wch: 9, hidden: true }, { wch: 9, hidden: true }, { wch: 9, hidden: true }, { wch: 9, hidden: true }, { wch: 9, hidden: true },
-      { wch: 11 }, { wch: 11 },
-      { wch: 12 }, { wch: 13.875 }, { wch: 9 }, { wch: 39.375 }
-    ];
-    ws['!freeze'] = { xSplit: 0, ySplit: DATA_START };
-    ws['!rows'] = [{ hpt: 37 }, {}, {}, {}, { hpt: 18 }].concat(outRows.map(() => ({ hpt: 18 })));
+    ws.views = [{ state: 'frozen', ySplit: HEADER_ROW }];
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, '미수금');
-    outWorkbook = wb;
+    outWorkbook = wbNew;
     setProgress(100);
     log(`✅ 완료 — 총 ${outRows.length}건 생성`, 'log-ok');
 
@@ -602,12 +624,21 @@ async function runProcess() {
   document.getElementById('btn-run').disabled = false;
 }
 
-function doDownload() {
+async function doDownload() {
   if (!outWorkbook) return;
   let name = document.getElementById('filename').value.trim();
   if (!name) name = '미수금_정리_' + new Date().toISOString().slice(0,10);
   if (!name.toLowerCase().endsWith('.xlsx')) name += '.xlsx';
-  XLSX.writeFile(outWorkbook, name, { cellStyles: true });
+  const buf = await outWorkbook.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 </script>
 </body>
