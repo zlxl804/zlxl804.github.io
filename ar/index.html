@@ -187,29 +187,30 @@ h1 { font-size: 21px; font-weight: 700; color: #1a202c; }
 
     <div class="sec-label" style="margin-top:18px;">연체개월별 배경색</div>
     <div class="color-scale">
-      <div class="field-row"><label>1개월 경과</label><input type="color" id="col-m1" value="#FF0000"></div>
-      <div class="field-row"><label>2개월 경과</label><input type="color" id="col-m2" value="#FFA500"></div>
-      <div class="field-row"><label>3개월 경과</label><input type="color" id="col-m3" value="#FFFF00"></div>
-      <div class="field-row"><label>4개월 경과</label><input type="color" id="col-m4" value="#00B050"></div>
-      <div class="field-row"><label>5개월 경과</label><input type="color" id="col-m5" value="#0070C0"></div>
-      <div class="field-row"><label>6개월 이상</label><input type="color" id="col-m6" value="#7030A0"></div>
+      <div class="field-row"><label>1개월 경과</label><input type="color" id="col-m1" value="#FFFFFF"></div>
+      <div class="field-row"><label>2개월 경과</label><input type="color" id="col-m2" value="#FFFFFF"></div>
+      <div class="field-row"><label>3개월 경과</label><input type="color" id="col-m3" value="#FFFFFF"></div>
+      <div class="field-row"><label>4개월 경과</label><input type="color" id="col-m4" value="#FFFFFF"></div>
+      <div class="field-row"><label>5개월 경과</label><input type="color" id="col-m5" value="#FFFFFF"></div>
+      <div class="field-row"><label>6개월 이상</label><input type="color" id="col-m6" value="#FFFFFF"></div>
     </div>
 
     <div class="sec-label" style="margin-top:18px;">업체구분별 배경색 (업체명 셀)</div>
     <div class="cat-row">
       <span class="cat-name">일반업체</span>
       <label class="bold-toggle"><input type="checkbox" id="bold-normal" checked> 볼드</label>
-      <input type="color" id="col-normal" value="#FF66B2">
+      <input type="color" id="col-normal" value="#FFFFFF">
     </div>
     <div class="cat-row">
       <span class="cat-name">기존업체 <span class="info-dot" title="이전 분기부터 이어져 내려온 미수금이 있는 업체">i</span></span>
       <label class="bold-toggle"><input type="checkbox" id="bold-carry" checked> 볼드</label>
-      <input type="color" id="col-carry" value="#00B0F0">
+      <input type="color" id="col-carry" value="#FFFFFF">
     </div>
     <div class="cat-row">
       <span class="cat-name">월말업체</span>
       <label class="bold-toggle"><input type="checkbox" id="bold-monthend" checked> 볼드</label>
-      <input type="color" id="col-monthend" value="#FFD700">
+      <input type="color" id="col-monthend" value="#FFFFFF">
+      <label class="bold-toggle">글자색 <input type="color" id="col-monthend-font" value="#FF0000"></label>
     </div>
 
   </div>
@@ -443,6 +444,7 @@ async function runProcess() {
       catCarryBold: document.getElementById('bold-carry').checked,
       catMonthend: document.getElementById('col-monthend').value,
       catMonthendBold: document.getElementById('bold-monthend').checked,
+      catMonthendFont: document.getElementById('col-monthend-font').value,
     };
     const refYMD = parseYMD(settings.refDateStr) || parseYMD(new Date().toISOString().slice(0,10));
     const refQ = quarterKey(refYMD);
@@ -607,7 +609,9 @@ async function runProcess() {
       vals.forEach((v, c) => {
         const cell = row.getCell(c + 1);
         cell.value = (v === '' ? null : v);
-        cell.font = { ...BASE_FONT };
+        cell.font = r._category === '월말업체'
+          ? { ...BASE_FONT, color: { argb: hexToARGB(settings.catMonthendFont) } }
+          : { ...BASE_FONT };
         if (rowFillHex) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hexToARGB(rowFillHex) } };
         if (numericCols.includes(c)) cell.numFmt = '#,##0';
         if (c === 0 || c === 8) cell.numFmt = 'yyyy-mm-dd';
@@ -619,7 +623,9 @@ async function runProcess() {
       const catBold = r._category === '월말업체' ? settings.catMonthendBold
                      : r._category === '기존업체' ? settings.catCarryBold
                      : settings.catNormalBold;
-      nameCell.font = { ...BASE_FONT, bold: !!catBold };
+      nameCell.font = r._category === '월말업체'
+        ? { ...BASE_FONT, bold: !!catBold, color: { argb: hexToARGB(settings.catMonthendFont) } }
+        : { ...BASE_FONT, bold: !!catBold };
       // 일반업체·기존업체는 업체명 칸만 구분색, 월말업체는 이미 행 전체가 칠해짐
       if (r._category !== '월말업체') {
         nameCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hexToARGB(catColor) } };
