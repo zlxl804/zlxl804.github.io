@@ -233,8 +233,9 @@ h1 { font-size: 21px; font-weight: 700; color: #1a202c; }
     💡 <b>처리 내용:</b> 거래명세서 전체 건을 대상으로, 수납일이 있으면 수납일자/수납금액을 채우고 미수납금액=0, 없으면 미수납금액=Total금액으로 채웁니다 →
     월말업체(파일③) / 기존업체(수납 안 된 채 기준일이 속한 분기보다 이전 발행분이 있는 업체) / 일반업체로 자동 분류 →
     연체개월수·업체구분에 따라 색상 적용 → 수납데이터(파일②)에 같은 업체의 최근 입금내역이 있으면(미수납 건에 한해) 비고란에 "확인필요"로 표시(자동 제외는 하지 않음) →
-    업체명순 정렬 → 요약 파일 생성. 전체 폰트는 굴림체 8pt로 원본 템플릿에 맞췄습니다.
-    "합계" 컬럼은 같은 업체가 연속된 행들의 미수납금액을 합산해 마지막 행에 표시합니다.
+    업체명순 정렬 → 요약 파일 생성. 전체 폰트는 굴림체 10pt로 원본 템플릿에 맞췄습니다.
+    "합계" 컬럼은 같은 업체가 연속된 행들의 미수납금액을 합산해 마지막 행에 표시하고,
+    "비고" 컬럼은 같은 업체 안에서 동일한 내용이 연속되면 셀을 병합합니다.
     1행에는 제목(20pt 굴림, 직접 수정 가능), 5행부터 헤더·데이터가 시작되고 D~H열(공급가액~DC금액)은 숨김 처리됩니다.
     <br><br>
     모든 처리는 브라우저 안에서만 이루어지고 파일은 어디에도 전송되지 않습니다.
@@ -534,25 +535,27 @@ async function runProcess() {
       if (lastIdxOfKey[r._key] === i) r.합계 = companyTotal[r._key];
     });
 
-    // 비고(N열) 중복값: 같은 업체 그룹 안에서 동일한 비고 텍스트가 반복되면 마지막 행에만 남김
-    const groupIndices = {};
-    outRows.forEach((r, i) => { (groupIndices[r._key] = groupIndices[r._key] || []).push(i); });
-    Object.values(groupIndices).forEach(idxArr => {
-      const lastSeenIdx = {};
-      idxArr.forEach(i => { if (outRows[i].비고) lastSeenIdx[outRows[i].비고] = i; });
-      idxArr.forEach(i => {
-        const val = outRows[i].비고;
-        if (val && lastSeenIdx[val] !== i) outRows[i].비고 = '';
-      });
-    });
+    // 비고(N열) 중복값: 같은 업체 그룹 안에서 동일한 비고 텍스트가 연속되면 셀 병합
+    const noteMergeRanges = [];
+    for (let i = 0; i < outRows.length; ) {
+      const val = outRows[i].비고;
+      if (!val) { i++; continue; }
+      let j = i;
+      while (j + 1 < outRows.length && outRows[j+1]._key === outRows[i]._key && outRows[j+1].비고 === val) j++;
+      if (j > i) {
+        noteMergeRanges.push({ start: i, end: j });
+        for (let k = i + 1; k <= j; k++) outRows[k].비고 = '';
+      }
+      i = j + 1;
+    }
     setProgress(75);
 
-    log('📝 엑셀 파일 생성 중 (굴림체 8pt 템플릿 적용)...', 'log-info');
+    log('📝 엑셀 파일 생성 중 (굴림체 10pt 템플릿 적용)...', 'log-info');
     const headers = ['작성일자','업체명','Total금액','공급가액','세액','소급비','출장비','DC금액','수납일자','수납금액','미수납금액','합계','담당자','비고'];
     const HEADER_ROW = 5;
     const DATA_START = 6;
     const reportTitle = document.getElementById('report-title').value.trim() || computeDefaultTitle();
-    const BASE_FONT = { name: 'Gulimche', size: 8 };
+    const BASE_FONT = { name: 'Gulimche', size: 10 };
     const numericCols = [2,3,4,5,6,7,9,10,11]; // Total금액~DC금액, 수납금액,미수납금액,합계 (0-based)
 
     const wbNew = new ExcelJS.Workbook();
@@ -607,6 +610,13 @@ async function runProcess() {
                      : settings.catNormalBold;
       nameCell.font = { ...BASE_FONT, bold: !!catBold, color: { argb: hexToARGB(catColor) } };
       row.height = 18;
+    });
+
+    // 비고(N열) 연속 중복값 병합
+    noteMergeRanges.forEach(({ start, end }) => {
+      ws.mergeCells(DATA_START + start, 14, DATA_START + end, 14);
+      const mergedCell = ws.getCell(DATA_START + start, 14);
+      mergedCell.alignment = { vertical: 'middle' };
     });
 
     ws.views = [{ state: 'frozen', ySplit: HEADER_ROW }];
