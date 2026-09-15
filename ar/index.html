@@ -407,6 +407,8 @@ function monthsElapsed(issue, ref) {
 }
 function quarterKey(ymd) { return ymd.y*10 + Math.ceil(ymd.m/3); }
 function hexToARGB(hex) { return 'FF' + String(hex).replace('#','').toUpperCase(); }
+// 배경색 흰색(#FFFFFF)은 "색깔없음"(채우기 안 함)으로 취급
+function colorOrNull(hex) { return (!hex || hex.toUpperCase() === '#FFFFFF') ? null : hex; }
 
 function pickField(row, ...names) {
   for (const n of names) {
@@ -597,15 +599,20 @@ async function runProcess() {
     });
     headerRow.height = 18;
 
-    const bucketColorMap = { 1: settings.m1, 2: settings.m2, 3: settings.m3, 4: settings.m4, 5: settings.m5 };
+    const bucketColorMap = {
+      1: colorOrNull(settings.m1), 2: colorOrNull(settings.m2), 3: colorOrNull(settings.m3),
+      4: colorOrNull(settings.m4), 5: colorOrNull(settings.m5)
+    };
+    const m6Color = colorOrNull(settings.m6);
+    const monthendFillColor = colorOrNull(settings.catMonthend);
     outRows.forEach((r, i) => {
       const rowNum = DATA_START + i;
       const row = ws.getRow(rowNum);
       const vals = [r.작성일자, r.업체명, r.Total금액, r.공급가액, r.세액, r.소급비, r.출장비, r.DC금액,
         r.수납일자, r.수납금액, r.미수납금액, r.합계, r.담당자, r.비고];
-      const agingFillHex = r._months <= 0 ? null : (bucketColorMap[r._months] || settings.m6);
+      const agingFillHex = r._months <= 0 ? null : (r._months in bucketColorMap ? bucketColorMap[r._months] : m6Color);
       // 월말업체는 행 전체를 업체구분 배경색으로 덮어씀 (연체개월 색보다 우선)
-      const rowFillHex = r._category === '월말업체' ? settings.catMonthend : agingFillHex;
+      const rowFillHex = r._category === '월말업체' ? monthendFillColor : agingFillHex;
       vals.forEach((v, c) => {
         const cell = row.getCell(c + 1);
         cell.value = (v === '' ? null : v);
@@ -627,8 +634,9 @@ async function runProcess() {
         ? { ...BASE_FONT, bold: !!catBold, color: { argb: hexToARGB(settings.catMonthendFont) } }
         : { ...BASE_FONT, bold: !!catBold };
       // 일반업체·기존업체는 업체명 칸만 구분색, 월말업체는 이미 행 전체가 칠해짐
-      if (r._category !== '월말업체') {
-        nameCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hexToARGB(catColor) } };
+      const catFillHex = colorOrNull(catColor);
+      if (r._category !== '월말업체' && catFillHex) {
+        nameCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hexToARGB(catFillHex) } };
       }
       row.height = 18;
     });
