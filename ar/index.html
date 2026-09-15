@@ -592,12 +592,14 @@ async function runProcess() {
       const row = ws.getRow(rowNum);
       const vals = [r.작성일자, r.업체명, r.Total금액, r.공급가액, r.세액, r.소급비, r.출장비, r.DC금액,
         r.수납일자, r.수납금액, r.미수납금액, r.합계, r.담당자, r.비고];
-      const fillHex = r._months <= 0 ? null : (bucketColorMap[r._months] || settings.m6);
+      const agingFillHex = r._months <= 0 ? null : (bucketColorMap[r._months] || settings.m6);
+      // 월말업체는 행 전체를 업체구분 배경색으로 덮어씀 (연체개월 색보다 우선)
+      const rowFillHex = r._category === '월말업체' ? settings.catMonthend : agingFillHex;
       vals.forEach((v, c) => {
         const cell = row.getCell(c + 1);
         cell.value = (v === '' ? null : v);
         cell.font = { ...BASE_FONT };
-        if (fillHex) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hexToARGB(fillHex) } };
+        if (rowFillHex) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hexToARGB(rowFillHex) } };
         if (numericCols.includes(c)) cell.numFmt = '#,##0';
         if (c === 0 || c === 8) cell.numFmt = 'yyyy-mm-dd';
       });
@@ -609,7 +611,10 @@ async function runProcess() {
                      : r._category === '기존업체' ? settings.catCarryBold
                      : settings.catNormalBold;
       nameCell.font = { ...BASE_FONT, bold: !!catBold };
-      nameCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hexToARGB(catColor) } };
+      // 일반업체·기존업체는 업체명 칸만 구분색, 월말업체는 이미 행 전체가 칠해짐
+      if (r._category !== '월말업체') {
+        nameCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hexToARGB(catColor) } };
+      }
       row.height = 18;
     });
 
