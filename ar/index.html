@@ -195,7 +195,7 @@ h1 { font-size: 21px; font-weight: 700; color: #1a202c; }
       <div class="field-row"><label>6개월 이상</label><input type="color" id="col-m6" value="#7030A0"></div>
     </div>
 
-    <div class="sec-label" style="margin-top:18px;">업체구분별 글자 스타일</div>
+    <div class="sec-label" style="margin-top:18px;">업체구분별 배경색 (업체명 셀)</div>
     <div class="cat-row">
       <span class="cat-name">일반업체</span>
       <label class="bold-toggle"><input type="checkbox" id="bold-normal" checked> 볼드</label>
@@ -608,7 +608,8 @@ async function runProcess() {
       const catBold = r._category === '월말업체' ? settings.catMonthendBold
                      : r._category === '기존업체' ? settings.catCarryBold
                      : settings.catNormalBold;
-      nameCell.font = { ...BASE_FONT, bold: !!catBold, color: { argb: hexToARGB(catColor) } };
+      nameCell.font = { ...BASE_FONT, bold: !!catBold };
+      nameCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hexToARGB(catColor) } };
       row.height = 18;
     });
 
