@@ -72,6 +72,14 @@ h1 { font-size: 21px; font-weight: 700; color: #1a202c; }
 .field-row input[type=color] {
   width: 40px; height: 28px; border: 1px solid #cbd5e0; border-radius: 6px; cursor: pointer; padding: 2px;
 }
+.color-picker-wrap { display: flex; align-items: center; gap: 6px; }
+.color-picker-wrap input[type=color] {
+  width: 40px; height: 28px; border: 1px solid #cbd5e0; border-radius: 6px; cursor: pointer; padding: 2px;
+}
+.color-picker-wrap input[type=color]:disabled {
+  opacity: 0.35; cursor: not-allowed;
+}
+.color-picker-wrap input[type=checkbox] { cursor: pointer; }
 .example-note {
   font-size: 11.5px; color: #a0aec0; margin-top: 6px; line-height: 1.5;
   background: #fffbeb; border-left: 3px solid #f6ad55; padding: 8px 10px; border-radius: 6px;
@@ -187,31 +195,32 @@ h1 { font-size: 21px; font-weight: 700; color: #1a202c; }
 
     <div class="sec-label" style="margin-top:18px;">연체개월별 배경색</div>
     <div class="color-scale">
-      <div class="field-row"><label>1개월 경과</label><input type="color" id="col-m1" value="#FFFFFF"></div>
-      <div class="field-row"><label>2개월 경과</label><input type="color" id="col-m2" value="#FFFFFF"></div>
-      <div class="field-row"><label>3개월 경과</label><input type="color" id="col-m3" value="#FFFFFF"></div>
-      <div class="field-row"><label>4개월 경과</label><input type="color" id="col-m4" value="#FFFFFF"></div>
-      <div class="field-row"><label>5개월 경과</label><input type="color" id="col-m5" value="#FFFFFF"></div>
-      <div class="field-row"><label>6개월 이상</label><input type="color" id="col-m6" value="#FFFFFF"></div>
+      <div class="field-row"><label>1개월 경과</label><span class="color-picker-wrap"><input type="checkbox" class="color-en" data-target="col-m1"><input type="color" id="col-m1" value="#FF0000" disabled></span></div>
+      <div class="field-row"><label>2개월 경과</label><span class="color-picker-wrap"><input type="checkbox" class="color-en" data-target="col-m2"><input type="color" id="col-m2" value="#FFA500" disabled></span></div>
+      <div class="field-row"><label>3개월 경과</label><span class="color-picker-wrap"><input type="checkbox" class="color-en" data-target="col-m3"><input type="color" id="col-m3" value="#FFFF00" disabled></span></div>
+      <div class="field-row"><label>4개월 경과</label><span class="color-picker-wrap"><input type="checkbox" class="color-en" data-target="col-m4"><input type="color" id="col-m4" value="#00B050" disabled></span></div>
+      <div class="field-row"><label>5개월 경과</label><span class="color-picker-wrap"><input type="checkbox" class="color-en" data-target="col-m5"><input type="color" id="col-m5" value="#0070C0" disabled></span></div>
+      <div class="field-row"><label>6개월 이상</label><span class="color-picker-wrap"><input type="checkbox" class="color-en" data-target="col-m6"><input type="color" id="col-m6" value="#7030A0" disabled></span></div>
     </div>
 
     <div class="sec-label" style="margin-top:18px;">업체구분별 배경색 (업체명 셀)</div>
     <div class="cat-row">
       <span class="cat-name">일반업체</span>
       <label class="bold-toggle"><input type="checkbox" id="bold-normal" checked> 볼드</label>
-      <input type="color" id="col-normal" value="#FFFFFF">
+      <span class="color-picker-wrap"><input type="checkbox" class="color-en" data-target="col-normal"><input type="color" id="col-normal" value="#FF66B2" disabled></span>
     </div>
     <div class="cat-row">
       <span class="cat-name">기존업체 <span class="info-dot" title="이전 분기부터 이어져 내려온 미수금이 있는 업체">i</span></span>
       <label class="bold-toggle"><input type="checkbox" id="bold-carry" checked> 볼드</label>
-      <input type="color" id="col-carry" value="#FFFFFF">
+      <span class="color-picker-wrap"><input type="checkbox" class="color-en" data-target="col-carry"><input type="color" id="col-carry" value="#00B0F0" disabled></span>
     </div>
     <div class="cat-row">
       <span class="cat-name">월말업체</span>
       <label class="bold-toggle"><input type="checkbox" id="bold-monthend" checked> 볼드</label>
-      <input type="color" id="col-monthend" value="#FFFFFF">
+      <span class="color-picker-wrap"><input type="checkbox" class="color-en" data-target="col-monthend"><input type="color" id="col-monthend" value="#FFD700" disabled></span>
       <label class="bold-toggle">글자색 <input type="color" id="col-monthend-font" value="#FF0000"></label>
     </div>
+    <div class="example-note" style="margin-top:10px;">💡 체크박스를 선택해야 해당 배경색이 적용됩니다. 선택하지 않으면 배경색 없음으로 처리됩니다.</div>
 
   </div>
 
@@ -265,6 +274,17 @@ function refreshDefaultTitle() {
 document.getElementById('report-title').addEventListener('input', () => { titleEdited = true; });
 document.getElementById('ref-date').addEventListener('change', refreshDefaultTitle);
 refreshDefaultTitle();
+
+// ── 배경색 체크박스로 켜고 끄기 (체크 안 하면 "색상 없음") ──
+document.querySelectorAll('.color-en').forEach(cb => {
+  const target = document.getElementById(cb.dataset.target);
+  cb.addEventListener('change', () => { target.disabled = !cb.checked; });
+});
+function getColorOrNull(colorId) {
+  const cb = document.querySelector(`.color-en[data-target="${colorId}"]`);
+  if (!cb || !cb.checked) return null;
+  return document.getElementById(colorId).value;
+}
 
 // ── 업로드 ──
 function onDrag(e, k) { e.preventDefault(); document.getElementById('zone-'+k).classList.add('dragover'); }
@@ -434,17 +454,17 @@ async function runProcess() {
 
     const settings = {
       refDateStr: document.getElementById('ref-date').value,
-      m1: document.getElementById('col-m1').value,
-      m2: document.getElementById('col-m2').value,
-      m3: document.getElementById('col-m3').value,
-      m4: document.getElementById('col-m4').value,
-      m5: document.getElementById('col-m5').value,
-      m6: document.getElementById('col-m6').value,
-      catNormal: document.getElementById('col-normal').value,
+      m1: getColorOrNull('col-m1'),
+      m2: getColorOrNull('col-m2'),
+      m3: getColorOrNull('col-m3'),
+      m4: getColorOrNull('col-m4'),
+      m5: getColorOrNull('col-m5'),
+      m6: getColorOrNull('col-m6'),
+      catNormal: getColorOrNull('col-normal'),
       catNormalBold: document.getElementById('bold-normal').checked,
-      catCarry: document.getElementById('col-carry').value,
+      catCarry: getColorOrNull('col-carry'),
       catCarryBold: document.getElementById('bold-carry').checked,
-      catMonthend: document.getElementById('col-monthend').value,
+      catMonthend: getColorOrNull('col-monthend'),
       catMonthendBold: document.getElementById('bold-monthend').checked,
       catMonthendFont: document.getElementById('col-monthend-font').value,
     };
