@@ -357,6 +357,21 @@ async function readRows(uint8) {
   }
 }
 
+// 월말업체C 전용: A열에 있는 업체명만 읽음 (헤더 행이 있어도/없어도 동작)
+async function readCompanyNameList(uint8) {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(uint8.buffer);
+  const ws = wb.worksheets[0];
+  const names = [];
+  for (let r = 1; r <= ws.rowCount; r++) {
+    const v = ws.getCell(r, 1).value;
+    const s = String(v ?? '').trim();
+    if (!s || s === '업체명') continue;
+    names.push(s);
+  }
+  return names;
+}
+
 // ── 유틸 ──
 function normNameKey(s) { return String(s||'').replace(/\s+/g,'').trim(); }
 function toNum(v) {
@@ -410,8 +425,8 @@ async function runProcess() {
     log('📂 파일 읽는 중...', 'log-info');
     const bRows = await readRows(files.b.data);
     const aRows = await readRows(files.a.data);
-    const cRows = await readRows(files.c.data);
-    log(`  ✓ 거래명세서 ${bRows.length}건 / 수납 ${aRows.length}건 / 월말업체 ${cRows.length}개사`, 'log-ok');
+    const cNames = await readCompanyNameList(files.c.data);
+    log(`  ✓ 거래명세서 ${bRows.length}건 / 수납 ${aRows.length}건 / 월말업체 ${cNames.length}개사`, 'log-ok');
     setProgress(20);
 
     const settings = {
@@ -445,13 +460,9 @@ async function runProcess() {
       if (issue && quarterKey(issue) < refQ) carryoverSet.add(normNameKey(pickField(r,'업체명')));
     });
 
-    // 월말업체 맵 (파일C 우선)
-    const monthEndMap = {};
-    cRows.forEach(r => {
-      const key = normNameKey(pickField(r,'업체명'));
-      if (key) monthEndMap[key] = pickField(r,'담당자');
-    });
-    log(`  ✓ 월말업체 ${Object.keys(monthEndMap).length}개사 확인`, 'log-ok');
+    // 월말업체 명단 (파일C, A열 업체명만 사용)
+    const monthEndSet = new Set(cNames.map(n => normNameKey(n)));
+    log(`  ✓ 월말업체 ${monthEndSet.size}개사 확인`, 'log-ok');
 
     // 수납데이터(A) 맵: 업체 -> 최근 입금내역
     const aMap = {};
@@ -481,12 +492,10 @@ async function runProcess() {
       if (isPaid) paidCount++; else unpaidCount++;
 
       let category = '일반업체';
-      if (monthEndMap[key] !== undefined) category = '월말업체';
+      if (monthEndSet.has(key)) category = '월말업체';
       else if (carryoverSet.has(key)) category = '기존업체';
 
-      const 담당자 = category === '월말업체'
-        ? (monthEndMap[key] || '')
-        : pickField(r, '세금계산서 발행자', '거래명세서 발행자');
+      const 담당자 = pickField(r, '세금계산서 발행자', '거래명세서 발행자');
 
       let 비고 = pickField(r,'비고');
       const receipts = aMap[key];
