@@ -80,6 +80,14 @@ h1 { font-size: 21px; font-weight: 700; color: #1a202c; }
   opacity: 0.35; cursor: not-allowed;
 }
 .color-picker-wrap input[type=checkbox] { cursor: pointer; }
+
+#unmatched-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 4px; }
+#unmatched-table th {
+  text-align: left; padding: 8px 10px; border-bottom: 2px solid #e2e8f0;
+  color: #4a5568; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+}
+#unmatched-table td { padding: 7px 10px; border-bottom: 1px solid #f0f0f0; color: #2d3748; }
+#unmatched-table tbody tr:nth-child(even) { background: #f7fafc; }
 .example-note {
   font-size: 11.5px; color: #a0aec0; margin-top: 6px; line-height: 1.5;
   background: #fffbeb; border-left: 3px solid #f6ad55; padding: 8px 10px; border-radius: 6px;
@@ -250,6 +258,19 @@ h1 { font-size: 21px; font-weight: 700; color: #1a202c; }
     <br><br>
     모든 처리는 브라우저 안에서만 이루어지고 파일은 어디에도 전송되지 않습니다.
   </div>
+</div>
+
+<div class="card" id="unmatched-card" style="display:none; margin-top:20px;">
+  <div class="hdr">
+    <span class="hdr-icon">⚠️</span>
+    <h1>월말업체 매칭 안된 업체명</h1>
+  </div>
+  <p class="subtitle" style="padding-left:0;">파일③(월말업체C)에는 있지만 파일①(거래명세서B)에서는 찾지 못한 업체명입니다. 오탈자·상호 변경·이번 기간 거래 없음 여부를 확인해보세요.</p>
+  <table id="unmatched-table">
+    <thead><tr><th>업체명 (파일C 원문)</th></tr></thead>
+    <tbody id="unmatched-tbody"></tbody>
+  </table>
+  <p id="unmatched-empty" style="display:none; font-size:13px; color:#276749; font-weight:600;">✅ 파일C의 모든 업체명이 파일B와 매칭되었습니다.</p>
 </div>
 
 <script>
@@ -437,10 +458,35 @@ function pickField(row, ...names) {
   return '';
 }
 
+// 월말업체C에는 있지만 거래명세서B에서 매칭 안 된 업체명을 하단 표에 표시
+function renderUnmatchedTable(names) {
+  const card = document.getElementById('unmatched-card');
+  const tbody = document.getElementById('unmatched-tbody');
+  const table = document.getElementById('unmatched-table');
+  const emptyMsg = document.getElementById('unmatched-empty');
+  tbody.innerHTML = '';
+  card.style.display = 'block';
+  if (!names.length) {
+    table.style.display = 'none';
+    emptyMsg.style.display = 'block';
+    return;
+  }
+  table.style.display = '';
+  emptyMsg.style.display = 'none';
+  names.forEach(n => {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.textContent = n;
+    tr.appendChild(td);
+    tbody.appendChild(tr);
+  });
+}
+
 // ── 메인 처리 ──
 async function runProcess() {
   document.getElementById('btn-run').disabled = true;
   document.getElementById('btn-dl').classList.remove('show');
+  document.getElementById('unmatched-card').style.display = 'none';
   document.getElementById('log').innerHTML = '';
   setProgress(5);
 
@@ -487,6 +533,11 @@ async function runProcess() {
     // 월말업체 명단 (파일C, A열 업체명만 사용)
     const monthEndSet = new Set(cNames.map(n => normNameKey(n)));
     log(`  ✓ 월말업체 ${monthEndSet.size}개사 확인`, 'log-ok');
+
+    // 파일C에는 있는데 파일B(거래명세서)에서 못 찾은 업체명
+    const bCompanyKeySet = new Set(candidates.map(r => normNameKey(pickField(r,'업체명'))).filter(Boolean));
+    const unmatchedMonthEnd = cNames.filter(n => !bCompanyKeySet.has(normNameKey(n)));
+    if (unmatchedMonthEnd.length) log(`  ⚠ 월말업체 중 ${unmatchedMonthEnd.length}개사가 거래명세서에서 매칭 안 됨`, 'log-warn');
 
     // 수납데이터(A) 맵: 업체 -> 최근 입금내역
     const aMap = {};
@@ -675,6 +726,7 @@ async function runProcess() {
     log(`✅ 완료 — 총 ${outRows.length}건 생성`, 'log-ok');
 
     document.getElementById('btn-dl').classList.add('show');
+    renderUnmatchedTable(unmatchedMonthEnd);
 
   } catch (err) {
     log('❌ 오류: ' + err.message, 'log-err');
