@@ -20,7 +20,9 @@ $('merge').onclick=async()=>{
    try{inputs.push(C.parse(XLSX.read(await files[i].arrayBuffer(),{type:'array'}),XLSX));}catch(e){throw Error(`${slots[i]}: ${e.message}`);}
   }
   result=C.merge(inputs);$('stats').replaceChildren();
-  ['통합 전체','기준 유지','서울 신규','대전 신규','부산 신규'].forEach((label,i)=>{const el=document.createElement('div');el.className='stat';if(i>1)el.style.background='#'+C.colors[i-1];el.textContent=label;const b=document.createElement('b');b.textContent=(i===0?result.items.length:result.counts[i-1])+'개';el.append(b);$('stats').append(el);});
+  ['세부항목 전체','기준 유지','서울 신규','대전 신규','부산 신규'].forEach((label,i)=>{const el=document.createElement('div');el.className='stat';if(i>1)el.style.background='#'+C.colors[i-1];el.textContent=label;const b=document.createElement('b');b.textContent=(i===0?result.items.length:result.counts[i-1])+'개';el.append(b);$('stats').append(el);});
+  const fieldCount=new Set(result.items.map(item=>item.code.slice(0,3))).size;
+  const fieldStat=document.createElement('div');fieldStat.className='stat';fieldStat.style.gridColumn='1 / -1';fieldStat.textContent='분야 수 (분류번호 앞 3자리)';const fieldValue=document.createElement('b');fieldValue.textContent=fieldCount+'개';fieldStat.append(fieldValue);$('stats').prepend(fieldStat);
   $('detail').textContent=`중복 제외 ${result.duplicates.reduce((a,b)=>a+b,0)}건 · 색상은 최초 추가 출처 기준입니다.`;
   $('result').hidden=false;render();status('통합이 완료되었습니다. 결과를 확인하고 엑셀을 다운로드하세요.');
  }catch(e){status(e.message,true);}finally{$('merge').disabled=!files.every(Boolean);document.querySelectorAll('input[type=file]').forEach(e=>e.disabled=false);}
