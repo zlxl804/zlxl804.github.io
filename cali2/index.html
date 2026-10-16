@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>엑셀 월별 시트 분리기</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Malgun Gothic', '맑은 고딕', sans-serif;
+  background: linear-gradient(135deg, #667eea22 0%, #764ba222 100%), #f0f4f8;
+  min-height: 100vh;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 30px 16px;
+}
+.card {
+  background: white; border-radius: 18px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+  width: 100%; max-width: 600px; padding: 38px 40px;
+}
+.hdr { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+.hdr-icon { font-size: 32px; }
+h1 { font-size: 21px; font-weight: 700; color: #1a202c; }
+.subtitle { font-size: 13px; color: #718096; margin-bottom: 26px; padding-left: 44px; }
+.sec-label {
+  font-size: 11px; font-weight: 700; color: #4a5568;
+  text-transform: uppercase; letter-spacing: 0.07em;
+  margin: 22px 0 8px; display: flex; align-items: center; gap: 8px;
+}
+.sec-label:first-of-type { margin-top: 0; }
+.badge {
+  display: inline-block; font-size: 10px; padding: 2px 8px;
+  border-radius: 99px; background: #ebf8ff; color: #2b6cb0; font-weight: 700;
+}
+.drop-zone {
+  border: 2px dashed #cbd5e0; border-radius: 12px;
+  padding: 22px 20px; text-align: center; cursor: pointer;
+  transition: all 0.2s; background: #f7fafc;
+  position: relative; overflow: hidden;
+}
+.drop-zone:hover, .drop-zone.dragover { border-color: #667eea; background: #f0f0ff; }
+.drop-zone.loaded { border-color: #48bb78; background: #f0fff4; border-style: solid; }
+.drop-zone .dz-icon { font-size: 28px; margin-bottom: 4px; }
+.drop-zone .dz-main { font-size: 14px; font-weight: 600; color: #2d3748; margin-bottom: 2px; }
+.drop-zone .dz-hint { font-size: 12px; color: #a0aec0; }
+.drop-zone .file-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #c6f6d5; color: #22543d; border-radius: 8px;
+  padding: 3px 10px; font-size: 12px; font-weight: 600; margin-top: 2px;
+}
+.drop-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+.settings-box {
+  background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 12px;
+  padding: 12px 18px;
+}
+.field-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 7px 0;
+}
+.field-row label { font-size: 13px; color: #2d3748; font-weight: 600; }
+.field-row input[type=number], .field-row select, .text-input {
+  border: 1px solid #cbd5e0; border-radius: 8px; padding: 6px 10px; font-size: 13px;
+  font-family: inherit; background: white;
+}
+.field-row input[type=number] { width: 80px; }
+.field-row select { max-width: 320px; }
+.text-input { width: 100%; }
+.ext-hint { font-size: 11px; color: #a0aec0; margin-top: 4px; }
+
+.btn-primary {
+  width: 100%; padding: 15px; margin-top: 22px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: white; border: none; border-radius: 12px;
+  font-size: 15px; font-weight: 700; cursor: pointer;
+  font-family: inherit; letter-spacing: 0.04em;
+  box-shadow: 0 4px 15px rgba(102,126,234,0.35);
+  transition: all 0.2s;
+}
+.btn-primary:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(102,126,234,0.45); }
+.btn-primary:disabled { background: #a0aec0; cursor: not-allowed; box-shadow: none; }
+.btn-dl {
+  width: 100%; padding: 14px; margin-top: 10px;
+  background: #276749; color: white; border: none; border-radius: 12px;
+  font-size: 14px; font-weight: 700; cursor: pointer;
+  font-family: inherit; transition: background 0.2s; display: none;
+}
+.btn-dl.show { display: block; }
+.btn-dl:hover { background: #22543d; }
+
+.log-box {
+  margin-top: 14px; background: #1a202c; color: #68d391;
+  font-family: 'Consolas', monospace; font-size: 12px;
+  border-radius: 10px; padding: 14px 16px; max-height: 240px; overflow-y: auto;
+  display: none; line-height: 1.75;
+}
+.log-box.show { display: block; }
+.log-err { color: #fc8181; } .log-info { color: #90cdf4; }
+.log-ok { color: #68d391; } .log-warn { color: #f6e05e; }
+
+.note {
+  margin-top: 18px; padding: 10px 14px;
+  background: #fffbeb; border-left: 3px solid #f6ad55;
+  border-radius: 6px; font-size: 12px; color: #744210; line-height: 1.6;
+}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="hdr">
+    <span class="hdr-icon">🗂️</span>
+    <h1>엑셀 월별 시트 분리기</h1>
+  </div>
+  <p class="subtitle">엑셀 파일을 올리면 날짜 컬럼 기준으로<br>1월 시트, 2월 시트 ... 로 나눠서 새 엑셀로 만들어 드립니다</p>
+
+  <div class="sec-label">① 엑셀 파일 <span class="badge">.xlsx</span></div>
+  <div class="drop-zone" id="zone"
+       ondragover="onDrag(event)" ondragleave="onLeave()" ondrop="onDrop(event)">
+    <input type="file" accept=".xlsx" onchange="onFile(event)">
+    <div class="dz-icon" id="dz-icon">📂</div>
+    <div class="dz-main">월별로 나눌 엑셀 파일</div>
+    <div class="dz-hint" id="dz-hint">파일을 끌어다 놓거나 클릭하세요</div>
+  </div>
+
+  <div class="sec-label">② 설정</div>
+  <div class="settings-box">
+    <div class="field-row" id="sheet-row" style="display:none;">
+      <label>대상 시트</label>
+      <select id="sheet-sel" onchange="refreshColumnOptions()"></select>
+    </div>
+    <div class="field-row">
+      <label>헤더 행 번호</label>
+      <input type="number" id="header-row" value="1" min="1" onchange="refreshColumnOptions()">
+    </div>
+    <div class="field-row">
+      <label>날짜 기준 컬럼</label>
+      <select id="date-col"></select>
+    </div>
+  </div>
+
+  <div class="sec-label">③ 파일명</div>
+  <input type="text" class="text-input" id="filename" placeholder="비워두면 원본파일명_월별 로 저장됩니다">
+  <div class="ext-hint">확장자(.xlsx)는 자동으로 붙습니다</div>
+
+  <button class="btn-primary" id="btn-run" onclick="runProcess()" disabled>▶ &nbsp;월별로 나누기</button>
+  <button class="btn-dl" id="btn-dl" onclick="doDownload()">⬇ 다운로드</button>
+
+  <div class="log-box" id="log"></div>
+
+  <div class="note">
+    💡 <b>처리 내용:</b> 선택한 날짜 컬럼의 월을 기준으로 행을 나눠 월별 시트("1월", "2월" ...)를 만들고, 헤더·서식·컬럼 너비는 원본 그대로 가져옵니다.
+    데이터가 있는 월만 시트가 만들어지고, 여러 해가 섞여 있으면 "2025년 12월"처럼 연도가 붙습니다.
+    날짜를 읽을 수 없는 행은 "날짜없음" 시트로 따로 모아 누락이 없게 합니다.
+    <br><br>
+    모든 처리는 브라우저 안에서만 이루어지고 파일은 어디에도 전송되지 않습니다.
+  </div>
+</div>
+
+<script>
+let srcWb = null;
+let srcFileName = '';
+let outWorkbook = null;
+
+// ── 업로드 ──
+function onDrag(e) { e.preventDefault(); document.getElementById('zone').classList.add('dragover'); }
+function onLeave() { document.getElementById('zone').classList.remove('dragover'); }
+function onDrop(e) { e.preventDefault(); onLeave(); loadFile(e.dataTransfer.files[0]); }
+function onFile(e) { loadFile(e.target.files[0]); }
+
+function loadFile(f) {
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = async ev => {
+    try {
+      const wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(ev.target.result);
+      if (!wb.worksheets.length) throw new Error('시트가 없는 파일입니다.');
+      srcWb = wb;
+      srcFileName = f.name;
+      document.getElementById('zone').classList.add('loaded');
+      document.getElementById('dz-icon').textContent = '✅';
+      document.getElementById('dz-hint').innerHTML = `<span class="file-badge">✓ ${f.name}</span>`;
+
+      const sel = document.getElementById('sheet-sel');
+      sel.innerHTML = '';
+      wb.worksheets.forEach((ws, i) => sel.add(new Option(`${ws.name} (${ws.rowCount}행)`, i)));
+      document.getElementById('sheet-row').style.display = wb.worksheets.length > 1 ? 'flex' : 'none';
+
+      refreshColumnOptions();
+      document.getElementById('btn-run').disabled = false;
+      document.getElementById('btn-dl').classList.remove('show');
+    } catch (err) {
+      srcWb = null;
+      document.getElementById('btn-run').disabled = true;
+      log('❌ 파일을 읽지 못했습니다: ' + err.message + ' (.xls 파일이면 .xlsx로 저장해서 올려주세요)', 'log-err');
+    }
+  };
+  reader.readAsArrayBuffer(f);
+}
+
+function currentSheet() {
+  return srcWb.worksheets[parseInt(document.getElementById('sheet-sel').value) || 0];
+}
+
+// ── 날짜 파싱 ──
+function parseDateParts(v) {
+  if (v === null || v === undefined || v === '') return null;
+  if (v instanceof Date) return { y: v.getUTCFullYear(), m: v.getUTCMonth() + 1, d: v.getUTCDate() };
+  if (typeof v === 'object') {
+    if ('result' in v) return parseDateParts(v.result);
+    if (v.richText) return parseDateParts(v.richText.map(t => t.text).join(''));
+    return null;
+  }
+  if (typeof v === 'number') {
+    if (v > 20000 && v < 80000) {
+      const d = new Date(Math.round((v - 25569) * 86400000));
+      return { y: d.getUTCFullYear(), m: d.getUTCMonth() + 1, d: d.getUTCDate() };
+    }
+    return null;
+  }
+  const s = String(v).trim();
+  let m = s.match(/^(\d{4})[-./](\d{1,2})[-./](\d{1,2})/);
+  if (!m) m = s.match(/^(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})/);
+  if (!m) m = s.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (!m) return null;
+  const y = +m[1], mo = +m[2], d = +m[3];
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  return { y, m: mo, d };
+}
+
+// ── 날짜 컬럼 후보 채우기 ──
+function refreshColumnOptions() {
+  if (!srcWb) return;
+  const ws = currentSheet();
+  const hr = Math.max(1, parseInt(document.getElementById('header-row').value) || 1);
+  const sel = document.getElementById('date-col');
+  sel.innerHTML = '';
+  const ncols = ws.columnCount;
+  let namedIdx = -1, dateLikeIdx = -1;
+  for (let c = 1; c <= ncols; c++) {
+    const name = String(ws.getRow(hr).getCell(c).text || '').trim();
+    sel.add(new Option(`${ws.getColumn(c).letter}열 - ${name || '(제목 없음)'}`, c));
+    if (namedIdx < 0 && name === '접수일') namedIdx = c;
+    if (dateLikeIdx < 0) {
+      let seen = 0, ok = 0;
+      for (let r = hr + 1; r <= ws.rowCount && seen < 5; r++) {
+        const v = ws.getRow(r).getCell(c).value;
+        if (v === null || v === undefined || v === '') continue;
+        seen++;
+        if (parseDateParts(v)) ok++;
+      }
+      if (seen > 0 && ok === seen) dateLikeIdx = c;
+    }
+  }
+  sel.value = namedIdx > 0 ? namedIdx : (dateLikeIdx > 0 ? dateLikeIdx : 1);
+}
+
+// ── 로그 ──
+function log(msg, cls) {
+  const box = document.getElementById('log');
+  box.classList.add('show');
+  const d = document.createElement('div');
+  if (cls) d.className = cls;
+  d.textContent = msg;
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+}
+
+// ── 행 복사 (값 + 서식) ──
+function copyRow(srcRow, dstRow, ncols) {
+  if (srcRow.height) dstRow.height = srcRow.height;
+  for (let c = 1; c <= ncols; c++) {
+    const s = srcRow.getCell(c);
+    const d = dstRow.getCell(c);
+    let v = s.value;
+    if (v && typeof v === 'object' && !(v instanceof Date) && ('formula' in v || 'sharedFormula' in v)) {
+      v = v.result !== undefined ? v.result : null;
+    }
+    d.value = v;
+    if (s.style) d.style = JSON.parse(JSON.stringify(s.style));
+  }
+}
+
+function setupSheet(dst, src, hr, ncols) {
+  dst.columns = Array.from({ length: ncols }, (_, i) => {
+    const col = src.getColumn(i + 1);
+    return { width: col.width, hidden: col.hidden };
+  });
+  if (src.views && src.views.length) dst.views = JSON.parse(JSON.stringify(src.views));
+  for (let r = 1; r <= hr; r++) copyRow(src.getRow(r), dst.getRow(r), ncols);
+  (src.model.merges || []).forEach(range => {
+    const m = String(range).match(/^[A-Z]+\d+:[A-Z]+(\d+)$/);
+    if (m && parseInt(m[1]) <= hr) dst.mergeCells(range);
+  });
+  if (src.autoFilter) {
+    dst.autoFilter = { from: { row: hr, column: 1 }, to: { row: hr, column: ncols } };
+  }
+}
+
+// ── 메인 처리 ──
+async function runProcess() {
+  if (!srcWb) return;
+  document.getElementById('btn-run').disabled = true;
+  document.getElementById('btn-dl').classList.remove('show');
+  document.getElementById('log').innerHTML = '';
+
+  try {
+    const ws = currentSheet();
+    const hr = Math.max(1, parseInt(document.getElementById('header-row').value) || 1);
+    const dateCol = parseInt(document.getElementById('date-col').value);
+    const ncols = ws.columnCount;
+    const colName = String(ws.getRow(hr).getCell(dateCol).text || '').trim() || `${ws.getColumn(dateCol).letter}열`;
+
+    log(`📂 시트 "${ws.name}" 읽는 중 — 헤더 ${hr}행, 날짜 컬럼 "${colName}"`, 'log-info');
+
+    const groups = new Map();
+    const undated = [];
+    let total = 0;
+    for (let r = hr + 1; r <= ws.rowCount; r++) {
+      const row = ws.getRow(r);
+      if (!row.hasValues) continue;
+      total++;
+      const p = parseDateParts(row.getCell(dateCol).value);
+      if (!p) { undated.push(r); continue; }
+      const key = `${p.y}-${String(p.m).padStart(2, '0')}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(r);
+    }
+    log(`  ✓ 데이터 ${total}행 확인`, 'log-ok');
+
+    const keys = [...groups.keys()].sort();
+    if (!keys.length) throw new Error(`"${colName}" 컬럼에서 읽을 수 있는 날짜가 없습니다. 날짜 기준 컬럼/헤더 행을 확인해 주세요.`);
+    const multiYear = new Set(keys.map(k => k.slice(0, 4))).size > 1;
+    if (multiYear) log('  ⚠ 여러 해의 데이터가 섞여 있어 시트 이름에 연도를 붙입니다', 'log-warn');
+
+    const out = new ExcelJS.Workbook();
+    let written = 0;
+    for (const key of keys) {
+      const [y, m] = key.split('-').map(Number);
+      const name = multiYear ? `${y}년 ${m}월` : `${m}월`;
+      const dst = out.addWorksheet(name);
+      setupSheet(dst, ws, hr, ncols);
+      groups.get(key).forEach((srcRowNum, i) => {
+        copyRow(ws.getRow(srcRowNum), dst.getRow(hr + 1 + i), ncols);
+      });
+      written += groups.get(key).length;
+      log(`  ✓ ${name} 시트 — ${groups.get(key).length}행`, 'log-ok');
+    }
+
+    if (undated.length) {
+      const dst = out.addWorksheet('날짜없음');
+      setupSheet(dst, ws, hr, ncols);
+      undated.forEach((srcRowNum, i) => copyRow(ws.getRow(srcRowNum), dst.getRow(hr + 1 + i), ncols));
+      written += undated.length;
+      log(`  ⚠ 날짜를 읽을 수 없는 ${undated.length}행은 "날짜없음" 시트에 모았습니다 (원본 행: ${undated.slice(0, 8).join(', ')}${undated.length > 8 ? ' …' : ''})`, 'log-warn');
+    }
+
+    if (written !== total) throw new Error(`행 수가 맞지 않습니다 (원본 ${total}행 / 결과 ${written}행)`);
+    log(`✅ 완료 — 원본 ${total}행 → ${out.worksheets.length}개 시트로 분리 (누락 없음)`, 'log-ok');
+
+    outWorkbook = out;
+    document.getElementById('btn-dl').classList.add('show');
+  } catch (err) {
+    log('❌ 오류: ' + err.message, 'log-err');
+    console.error(err);
+  }
+  document.getElementById('btn-run').disabled = false;
+}
+
+async function doDownload() {
+  if (!outWorkbook) return;
+  let name = document.getElementById('filename').value.trim();
+  if (!name) name = srcFileName.replace(/\.xlsx$/i, '') + '_월별';
+  if (!name.toLowerCase().endsWith('.xlsx')) name += '.xlsx';
+  const buf = await outWorkbook.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+</script>
+</body>
+</html>
