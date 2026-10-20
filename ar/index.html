@@ -261,7 +261,8 @@ h1 { font-size: 21px; font-weight: 700; color: #1a202c; }
     월말업체(파일③) / 기존업체(수납 안 된 채 기준일이 속한 분기보다 이전 발행분이 있는 업체) / 일반업체로 자동 분류 →
     미수납 3개월 이상 경과 건은 연체 배경색(기본 주황), 업체구분은 설정에 따라 색상 적용 → 수납데이터(파일②)에 같은 업체의 최근 입금내역이 있으면(미수납 건에 한해) 비고란에 "확인필요"로 표시(자동 제외는 하지 않음) →
     업체명순 정렬 → 요약 파일 생성. 전체 폰트는 굴림체 10pt로 원본 템플릿에 맞췄습니다.
-    "합계" 컬럼은 같은 업체가 연속된 행들의 미수납금액을 합산해 마지막 행에 표시하고,
+    5행부터 마지막 데이터 행까지 모든 칸에 테두리가 들어가고,
+    "합계" 컬럼은 같은 업체의 미수납금액을 합산해 그 업체 행들의 L열을 셀 병합해서 표시하고,
     "비고" 컬럼은 같은 업체 안에서 동일한 내용이 연속되면 셀을 병합합니다.
     1행에는 제목(20pt 굴림, 직접 수정 가능), 5행부터 헤더·데이터가 시작되고 D~H열(공급가액~DC금액)은 숨김 처리됩니다.
     <br><br>
@@ -616,14 +617,14 @@ async function runProcess() {
     const dateVal = d => d instanceof Date ? d.getTime() : 0;
     outRows.sort((x,y) => x.업체명.localeCompare(y.업체명,'ko') || (dateVal(x.작성일자) - dateVal(y.작성일자)));
 
-    // 업체별 합계 컬럼: 그룹 마지막 행에 해당 업체 미수납 합계 표시 (※ 잠정 규칙 — 확인 후 조정 예정)
-    const companyTotal = {};
-    outRows.forEach(r => { companyTotal[r._key] = (companyTotal[r._key]||0) + r.미수납금액; });
-    const lastIdxOfKey = {};
-    outRows.forEach((r, i) => { lastIdxOfKey[r._key] = i; });
-    outRows.forEach((r, i) => {
-      if (lastIdxOfKey[r._key] === i) r.합계 = companyTotal[r._key];
-    });
+    // 합계(L열): 같은 업체가 연속된 행들의 미수납금액 합계를 첫 행에 넣고, 그 업체 행들만 L열 셀을 병합
+    for (let i = 0; i < outRows.length; ) {
+      let j = i, sum = outRows[i].미수납금액;
+      while (j + 1 < outRows.length && outRows[j + 1]._key === outRows[i]._key) { j++; sum += outRows[j].미수납금액; }
+      outRows[i].합계 = sum;
+      outRows[i]._runLen = j - i + 1;
+      i = j + 1;
+    }
 
     // 비고(N열) 중복값: 같은 업체 그룹 안에서 동일한 비고 텍스트가 연속되면 셀 병합
     const noteMergeRanges = [];
@@ -726,6 +727,10 @@ function buildWorkbook(rows, ctx) {
       if (rowFillHex) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hexToARGB(rowFillHex) } };
       if (numericCols.includes(c)) cell.numFmt = '#,##0';
       if (c === 0 || c === 8) cell.numFmt = 'yyyy-mm-dd';
+      cell.border = {
+        top: { style: 'thin' }, bottom: { style: 'thin' },
+        left: { style: 'thin' }, right: { style: 'thin' }
+      };
     });
     const nameCell = row.getCell(2);
     const catColor = r._category === '월말업체' ? settings.catMonthend
@@ -743,6 +748,18 @@ function buildWorkbook(rows, ctx) {
       nameCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hexToARGB(catFillHex) } };
     }
     row.height = 18;
+  });
+
+  // 합계(L열) 병합: 업체 단위 값이라 행별 연체색은 빼고, 월말업체 색만 유지 (병합 셀은 첫 셀의 서식을 따름)
+  rows.forEach((r, i) => {
+    if (!(r._runLen > 1)) return;
+    const s = DATA_START + i;
+    const master = ws.getCell(s, 12);
+    master.fill = (r._category === '월말업체' && monthendFillColor)
+      ? { type: 'pattern', pattern: 'solid', fgColor: { argb: hexToARGB(monthendFillColor) } }
+      : { type: 'pattern', pattern: 'none' };
+    master.alignment = { vertical: 'middle' };
+    ws.mergeCells(s, 12, s + r._runLen - 1, 12);
   });
 
   // 비고(N열) 연속 중복값 병합 (같은 업체의 행은 항상 같은 그룹에 있으므로 부분 다운로드에서도 연속 유지)
