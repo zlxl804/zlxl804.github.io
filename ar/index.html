@@ -123,6 +123,16 @@ h1 { font-size: 21px; font-weight: 700; color: #1a202c; }
 }
 .btn-dl.show { display: block; }
 .btn-dl:hover { background: #22543d; }
+.dl-split { display: none; gap: 10px; margin-top: 10px; }
+.dl-split.show { display: flex; }
+.btn-dl-sub {
+  flex: 1; padding: 12px 8px;
+  background: white; color: #276749; border: 2px solid #276749; border-radius: 12px;
+  font-size: 13px; font-weight: 700; cursor: pointer; font-family: inherit;
+  transition: background 0.2s;
+}
+.btn-dl-sub:hover:not(:disabled) { background: #f0fff4; }
+.btn-dl-sub:disabled { color: #a0aec0; border-color: #cbd5e0; cursor: not-allowed; }
 
 .prog-wrap { height: 5px; background: #e2e8f0; border-radius: 99px; margin: 14px 0 0; overflow: hidden; display: none; }
 .prog-wrap.show { display: block; }
@@ -201,14 +211,9 @@ h1 { font-size: 21px; font-weight: 700; color: #1a202c; }
       <input type="text" id="report-title" style="flex:1;">
     </div>
 
-    <div class="sec-label" style="margin-top:18px;">연체개월별 배경색</div>
+    <div class="sec-label" style="margin-top:18px;">연체 배경색</div>
     <div class="color-scale">
-      <div class="field-row"><label>1개월 경과</label><span class="color-picker-wrap"><input type="checkbox" class="color-en" data-target="col-m1"><input type="color" id="col-m1" value="#FF0000" disabled></span></div>
-      <div class="field-row"><label>2개월 경과</label><span class="color-picker-wrap"><input type="checkbox" class="color-en" data-target="col-m2"><input type="color" id="col-m2" value="#FFA500" disabled></span></div>
-      <div class="field-row"><label>3개월 경과</label><span class="color-picker-wrap"><input type="checkbox" class="color-en" data-target="col-m3"><input type="color" id="col-m3" value="#FFFF00" disabled></span></div>
-      <div class="field-row"><label>4개월 경과</label><span class="color-picker-wrap"><input type="checkbox" class="color-en" data-target="col-m4"><input type="color" id="col-m4" value="#00B050" disabled></span></div>
-      <div class="field-row"><label>5개월 경과</label><span class="color-picker-wrap"><input type="checkbox" class="color-en" data-target="col-m5"><input type="color" id="col-m5" value="#0070C0" disabled></span></div>
-      <div class="field-row"><label>6개월 이상</label><span class="color-picker-wrap"><input type="checkbox" class="color-en" data-target="col-m6"><input type="color" id="col-m6" value="#7030A0" disabled></span></div>
+      <div class="field-row"><label>3개월 이상 경과</label><span class="color-picker-wrap"><input type="checkbox" class="color-en" data-target="col-m3" checked><input type="color" id="col-m3" value="#FFA500"></span></div>
     </div>
 
     <div class="sec-label" style="margin-top:18px;">업체구분별 배경색 (업체명 셀)</div>
@@ -243,14 +248,18 @@ h1 { font-size: 21px; font-weight: 700; color: #1a202c; }
   <button class="btn-primary" id="btn-run" onclick="runProcess()" disabled>
     ▶ &nbsp;처리 시작하기
   </button>
-  <button class="btn-dl" id="btn-dl" onclick="doDownload()">⬇ 다운로드</button>
+  <button class="btn-dl" id="btn-dl" onclick="doDownload('all')">⬇ 전체 다운로드</button>
+  <div class="dl-split" id="dl-split">
+    <button class="btn-dl-sub" id="btn-dl-monthend" onclick="doDownload('monthend')">⬇ 월말업체만 다운로드</button>
+    <button class="btn-dl-sub" id="btn-dl-others" onclick="doDownload('others')">⬇ 월말업체 제외 다운로드</button>
+  </div>
 
   <div class="log-box" id="log"></div>
 
   <div class="note">
     💡 <b>처리 내용:</b> 거래명세서 전체 건을 대상으로, 수납일이 있으면 수납일자/수납금액을 채우고 미수납금액=0, 없으면 미수납금액=Total금액으로 채웁니다 →
     월말업체(파일③) / 기존업체(수납 안 된 채 기준일이 속한 분기보다 이전 발행분이 있는 업체) / 일반업체로 자동 분류 →
-    연체개월수·업체구분에 따라 색상 적용 → 수납데이터(파일②)에 같은 업체의 최근 입금내역이 있으면(미수납 건에 한해) 비고란에 "확인필요"로 표시(자동 제외는 하지 않음) →
+    미수납 3개월 이상 경과 건은 연체 배경색(기본 주황), 업체구분은 설정에 따라 색상 적용 → 수납데이터(파일②)에 같은 업체의 최근 입금내역이 있으면(미수납 건에 한해) 비고란에 "확인필요"로 표시(자동 제외는 하지 않음) →
     업체명순 정렬 → 요약 파일 생성. 전체 폰트는 굴림체 10pt로 원본 템플릿에 맞췄습니다.
     "합계" 컬럼은 같은 업체가 연속된 행들의 미수납금액을 합산해 마지막 행에 표시하고,
     "비고" 컬럼은 같은 업체 안에서 동일한 내용이 연속되면 셀을 병합합니다.
@@ -276,6 +285,7 @@ h1 { font-size: 21px; font-weight: 700; color: #1a202c; }
 <script>
 const files = { a: null, b: null, c: null };
 let outWorkbook = null;
+let lastResult = null;
 
 document.getElementById('ref-date').valueAsDate = new Date();
 
@@ -486,6 +496,7 @@ function renderUnmatchedTable(names) {
 async function runProcess() {
   document.getElementById('btn-run').disabled = true;
   document.getElementById('btn-dl').classList.remove('show');
+  document.getElementById('dl-split').classList.remove('show');
   document.getElementById('unmatched-card').style.display = 'none';
   document.getElementById('log').innerHTML = '';
   setProgress(5);
@@ -500,12 +511,7 @@ async function runProcess() {
 
     const settings = {
       refDateStr: document.getElementById('ref-date').value,
-      m1: getColorOrNull('col-m1'),
-      m2: getColorOrNull('col-m2'),
-      m3: getColorOrNull('col-m3'),
-      m4: getColorOrNull('col-m4'),
-      m5: getColorOrNull('col-m5'),
-      m6: getColorOrNull('col-m6'),
+      overdue: getColorOrNull('col-m3'),
       catNormal: getColorOrNull('col-normal'),
       catNormalBold: document.getElementById('bold-normal').checked,
       catCarry: getColorOrNull('col-carry'),
@@ -581,7 +587,7 @@ async function runProcess() {
       }
 
       return {
-        작성일자: issue ? new Date(issue.y, issue.m - 1, issue.d) : issueRaw,
+        작성일자: issue ? new Date(Date.UTC(issue.y, issue.m - 1, issue.d)) : issueRaw,
         업체명: name,
         Total금액: total,
         공급가액: toNum(pickField(r,'공급가액')),
@@ -589,7 +595,7 @@ async function runProcess() {
         소급비: toNum(pickField(r,'소급비')),
         출장비: toNum(pickField(r,'출장비')),
         DC금액: toNum(pickField(r,'할인금액')),
-        수납일자: isPaid && receiveDate ? new Date(receiveDate.y, receiveDate.m - 1, receiveDate.d) : '',
+        수납일자: isPaid && receiveDate ? new Date(Date.UTC(receiveDate.y, receiveDate.m - 1, receiveDate.d)) : '',
         수납금액: isPaid ? total : '',
         미수납금액: isPaid ? 0 : total,
         합계: '',
@@ -635,97 +641,25 @@ async function runProcess() {
     setProgress(75);
 
     log('📝 엑셀 파일 생성 중 (굴림체 10pt 템플릿 적용)...', 'log-info');
-    const headers = ['작성일자','업체명','Total금액','공급가액','세액','소급비','출장비','DC금액','수납일자','수납금액','미수납금액','합계','담당자','비고'];
-    const HEADER_ROW = 5;
-    const DATA_START = 6;
     const reportTitle = document.getElementById('report-title').value.trim() || computeDefaultTitle();
-    const BASE_FONT = { name: 'Gulimche', size: 10 };
-    const numericCols = [2,3,4,5,6,7,9,10,11]; // Total금액~DC금액, 수납금액,미수납금액,합계 (0-based)
-
-    const wbNew = new ExcelJS.Workbook();
-    const ws = wbNew.addWorksheet('미수금');
-
-    // 컬럼 너비 (참고 템플릿 기준) — D~H(공급가액~DC금액)는 숨김 처리
-    const colWidths = [10.875, 22.25, 11.125, 9, 9, 9, 9, 9, 11, 11, 12, 13.875, 9, 39.375];
-    ws.columns = headers.map((h, i) => ({ width: colWidths[i], hidden: i >= 3 && i <= 7 }));
-
-    // 제목(1행)
-    ws.mergeCells(1, 1, 1, headers.length);
-    const titleCell = ws.getCell(1, 1);
-    titleCell.value = reportTitle;
-    titleCell.font = { name: 'Gulim', size: 20, bold: true };
-    ws.getRow(1).height = 37;
-
-    // 헤더 (5행)
-    const headerRow = ws.getRow(HEADER_ROW);
-    headers.forEach((h, i) => {
-      const cell = headerRow.getCell(i + 1);
-      cell.value = h;
-      cell.font = { ...BASE_FONT, bold: true };
-      cell.alignment = { horizontal: 'center', vertical: 'middle' };
-      cell.border = {
-        top: { style: 'thin' }, bottom: { style: 'thin' },
-        left: { style: 'thin' }, right: { style: 'thin' }
-      };
-    });
-    headerRow.height = 18;
-
-    const bucketColorMap = {
-      1: colorOrNull(settings.m1), 2: colorOrNull(settings.m2), 3: colorOrNull(settings.m3),
-      4: colorOrNull(settings.m4), 5: colorOrNull(settings.m5)
-    };
-    const m6Color = colorOrNull(settings.m6);
-    const monthendFillColor = colorOrNull(settings.catMonthend);
-    outRows.forEach((r, i) => {
-      const rowNum = DATA_START + i;
-      const row = ws.getRow(rowNum);
-      const vals = [r.작성일자, r.업체명, r.Total금액, r.공급가액, r.세액, r.소급비, r.출장비, r.DC금액,
-        r.수납일자, r.수납금액, r.미수납금액, r.합계, r.담당자, r.비고];
-      const agingFillHex = r._months <= 0 ? null : (r._months in bucketColorMap ? bucketColorMap[r._months] : m6Color);
-      // 월말업체는 행 전체를 업체구분 배경색으로 덮어씀 (연체개월 색보다 우선)
-      const rowFillHex = r._category === '월말업체' ? monthendFillColor : agingFillHex;
-      vals.forEach((v, c) => {
-        const cell = row.getCell(c + 1);
-        cell.value = (v === '' ? null : v);
-        cell.font = r._category === '월말업체'
-          ? { ...BASE_FONT, color: { argb: hexToARGB(settings.catMonthendFont) } }
-          : { ...BASE_FONT };
-        if (rowFillHex) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hexToARGB(rowFillHex) } };
-        if (numericCols.includes(c)) cell.numFmt = '#,##0';
-        if (c === 0 || c === 8) cell.numFmt = 'yyyy-mm-dd';
-      });
-      const nameCell = row.getCell(2);
-      const catColor = r._category === '월말업체' ? settings.catMonthend
-                      : r._category === '기존업체' ? settings.catCarry
-                      : settings.catNormal;
-      const catBold = r._category === '월말업체' ? settings.catMonthendBold
-                     : r._category === '기존업체' ? settings.catCarryBold
-                     : settings.catNormalBold;
-      nameCell.font = r._category === '월말업체'
-        ? { ...BASE_FONT, bold: !!catBold, color: { argb: hexToARGB(settings.catMonthendFont) } }
-        : { ...BASE_FONT, bold: !!catBold };
-      // 일반업체·기존업체는 업체명 칸만 구분색, 월말업체는 이미 행 전체가 칠해짐
-      const catFillHex = colorOrNull(catColor);
-      if (r._category !== '월말업체' && catFillHex) {
-        nameCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hexToARGB(catFillHex) } };
-      }
-      row.height = 18;
-    });
-
-    // 비고(N열) 연속 중복값 병합
-    noteMergeRanges.forEach(({ start, end }) => {
-      ws.mergeCells(DATA_START + start, 14, DATA_START + end, 14);
-      const mergedCell = ws.getCell(DATA_START + start, 14);
-      mergedCell.alignment = { vertical: 'middle' };
-    });
-
-    ws.views = [{ state: 'frozen', ySplit: HEADER_ROW }];
-
-    outWorkbook = wbNew;
+    // 병합 범위는 행 객체 기준으로 보관 (월말업체만/제외 다운로드 시 인덱스가 달라지므로)
+    const noteMerges = noteMergeRanges.map(({ start, end }) => ({ first: outRows[start], last: outRows[end] }));
+    lastResult = { outRows, settings, reportTitle, noteMerges };
+    outWorkbook = buildWorkbook(outRows, lastResult);
     setProgress(100);
     log(`✅ 완료 — 총 ${outRows.length}건 생성`, 'log-ok');
 
+    const monthendCount = outRows.filter(r => r._category === '월말업체').length;
+    const othersCount = outRows.length - monthendCount;
+    const btnMonthend = document.getElementById('btn-dl-monthend');
+    const btnOthers = document.getElementById('btn-dl-others');
+    btnMonthend.textContent = `⬇ 월말업체만 다운로드 (${monthendCount}건)`;
+    btnOthers.textContent = `⬇ 월말업체 제외 다운로드 (${othersCount}건)`;
+    btnMonthend.disabled = monthendCount === 0;
+    btnOthers.disabled = othersCount === 0;
+
     document.getElementById('btn-dl').classList.add('show');
+    document.getElementById('dl-split').classList.add('show');
     renderUnmatchedTable(unmatchedMonthEnd);
 
   } catch (err) {
@@ -735,12 +669,111 @@ async function runProcess() {
   document.getElementById('btn-run').disabled = false;
 }
 
-async function doDownload() {
-  if (!outWorkbook) return;
+// rows(정렬 완료된 결과 행)로 엑셀 워크북 생성 — 전체/월말업체만/월말업체 제외 다운로드에서 공통 사용
+function buildWorkbook(rows, ctx) {
+  const { settings, reportTitle, noteMerges } = ctx;
+  const headers = ['작성일자','업체명','Total금액','공급가액','세액','소급비','출장비','DC금액','수납일자','수납금액','미수납금액','합계','담당자','비고'];
+  const HEADER_ROW = 5;
+  const DATA_START = 6;
+  const BASE_FONT = { name: 'Gulimche', size: 10 };
+  const numericCols = [2,3,4,5,6,7,9,10,11]; // Total금액~DC금액, 수납금액,미수납금액,합계 (0-based)
+
+  const wbNew = new ExcelJS.Workbook();
+  const ws = wbNew.addWorksheet('미수금');
+
+  // 컬럼 너비 (참고 템플릿 기준) — D~H(공급가액~DC금액)는 숨김 처리
+  const colWidths = [10.875, 22.25, 11.125, 9, 9, 9, 9, 9, 11, 11, 12, 13.875, 9, 39.375];
+  ws.columns = headers.map((h, i) => ({ width: colWidths[i], hidden: i >= 3 && i <= 7 }));
+
+  // 제목(1행)
+  ws.mergeCells(1, 1, 1, headers.length);
+  const titleCell = ws.getCell(1, 1);
+  titleCell.value = reportTitle;
+  titleCell.font = { name: 'Gulim', size: 20, bold: true };
+  ws.getRow(1).height = 37;
+
+  // 헤더 (5행)
+  const headerRow = ws.getRow(HEADER_ROW);
+  headers.forEach((h, i) => {
+    const cell = headerRow.getCell(i + 1);
+    cell.value = h;
+    cell.font = { ...BASE_FONT, bold: true };
+    cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    cell.border = {
+      top: { style: 'thin' }, bottom: { style: 'thin' },
+      left: { style: 'thin' }, right: { style: 'thin' }
+    };
+  });
+  headerRow.height = 18;
+
+  const overdueColor = colorOrNull(settings.overdue);
+  const monthendFillColor = colorOrNull(settings.catMonthend);
+  rows.forEach((r, i) => {
+    const rowNum = DATA_START + i;
+    const row = ws.getRow(rowNum);
+    const vals = [r.작성일자, r.업체명, r.Total금액, r.공급가액, r.세액, r.소급비, r.출장비, r.DC금액,
+      r.수납일자, r.수납금액, r.미수납금액, r.합계, r.담당자, r.비고];
+    // 연체 3개월 이상(수납 안 된 건)만 연체 배경색
+    const agingFillHex = r._months >= 3 ? overdueColor : null;
+    // 월말업체는 행 전체를 업체구분 배경색으로 덮어씀 (연체 색보다 우선)
+    const rowFillHex = r._category === '월말업체' ? monthendFillColor : agingFillHex;
+    vals.forEach((v, c) => {
+      const cell = row.getCell(c + 1);
+      cell.value = (v === '' ? null : v);
+      cell.font = r._category === '월말업체'
+        ? { ...BASE_FONT, color: { argb: hexToARGB(settings.catMonthendFont) } }
+        : { ...BASE_FONT };
+      if (rowFillHex) cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hexToARGB(rowFillHex) } };
+      if (numericCols.includes(c)) cell.numFmt = '#,##0';
+      if (c === 0 || c === 8) cell.numFmt = 'yyyy-mm-dd';
+    });
+    const nameCell = row.getCell(2);
+    const catColor = r._category === '월말업체' ? settings.catMonthend
+                    : r._category === '기존업체' ? settings.catCarry
+                    : settings.catNormal;
+    const catBold = r._category === '월말업체' ? settings.catMonthendBold
+                   : r._category === '기존업체' ? settings.catCarryBold
+                   : settings.catNormalBold;
+    nameCell.font = r._category === '월말업체'
+      ? { ...BASE_FONT, bold: !!catBold, color: { argb: hexToARGB(settings.catMonthendFont) } }
+      : { ...BASE_FONT, bold: !!catBold };
+    // 일반업체·기존업체는 업체명 칸만 구분색, 월말업체는 이미 행 전체가 칠해짐
+    const catFillHex = colorOrNull(catColor);
+    if (r._category !== '월말업체' && catFillHex) {
+      nameCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hexToARGB(catFillHex) } };
+    }
+    row.height = 18;
+  });
+
+  // 비고(N열) 연속 중복값 병합 (같은 업체의 행은 항상 같은 그룹에 있으므로 부분 다운로드에서도 연속 유지)
+  const idxOf = new Map(rows.map((r, i) => [r, i]));
+  noteMerges.forEach(({ first, last }) => {
+    if (!idxOf.has(first) || !idxOf.has(last)) return;
+    const s = DATA_START + idxOf.get(first);
+    const e = DATA_START + idxOf.get(last);
+    ws.mergeCells(s, 14, e, 14);
+    ws.getCell(s, 14).alignment = { vertical: 'middle' };
+  });
+
+  ws.views = [{ state: 'frozen', ySplit: HEADER_ROW }];
+  return wbNew;
+}
+
+// kind: 'all' | 'monthend'(월말업체만) | 'others'(월말업체 제외)
+async function doDownload(kind = 'all') {
+  if (!lastResult || !outWorkbook) return;
+  let wb = outWorkbook;
+  let suffix = '';
+  if (kind !== 'all') {
+    const rows = lastResult.outRows.filter(r => (kind === 'monthend') === (r._category === '월말업체'));
+    if (!rows.length) return;
+    wb = buildWorkbook(rows, lastResult);
+    suffix = kind === 'monthend' ? '_월말업체' : '_월말업체제외';
+  }
   let name = document.getElementById('filename').value.trim();
   if (!name) name = '미수금_정리_' + new Date().toISOString().slice(0,10);
-  if (!name.toLowerCase().endsWith('.xlsx')) name += '.xlsx';
-  const buf = await outWorkbook.xlsx.writeBuffer();
+  name = name.replace(/\.xlsx$/i, '') + suffix + '.xlsx';
+  const buf = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
