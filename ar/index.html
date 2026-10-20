@@ -257,7 +257,7 @@ h1 { font-size: 21px; font-weight: 700; color: #1a202c; }
   <div class="log-box" id="log"></div>
 
   <div class="note">
-    💡 <b>처리 내용:</b> 거래명세서 전체 건을 대상으로, 수납일이 있으면 수납일자/수납금액을 채우고 미수납금액=0, 없으면 미수납금액=Total금액으로 채웁니다 →
+    💡 <b>처리 내용:</b> 거래명세서에서 수납일이 있는(수납 완료) 건은 모두 제외하고, 수납일이 없는 건만 미수납금액=Total금액으로 남깁니다 →
     월말업체(파일③) / 기존업체(수납 안 된 채 기준일이 속한 분기보다 이전 발행분이 있는 업체) / 일반업체로 자동 분류 →
     미수납 3개월 이상 경과 건은 연체 배경색(기본 주황), 업체구분은 설정에 따라 색상 적용 → 수납데이터(파일②)에 같은 업체의 최근 입금내역이 있으면(미수납 건에 한해) 비고란에 "확인필요"로 표시(자동 제외는 하지 않음) →
     업체명순 정렬 → 요약 파일 생성. 전체 폰트는 굴림체 10pt로 원본 템플릿에 맞췄습니다.
@@ -559,8 +559,8 @@ async function runProcess() {
     setProgress(50);
 
     log('⚙️  업체 분류·색상 계산 중...', 'log-info');
-    let flagged = 0, paidCount = 0, unpaidCount = 0;
-    const outRows = candidates.map(r => {
+    let paidCount = 0;
+    const builtRows = candidates.map(r => {
       const name = pickField(r,'업체명');
       const key = normNameKey(name);
       const issueRaw = pickField(r, '세금계산서(작성표시일)', '거래명세서 발행일');
@@ -571,7 +571,7 @@ async function runProcess() {
       const receiveDateRaw = pickField(r,'수납일');
       const isPaid = !!String(receiveDateRaw).trim();
       const receiveDate = isPaid ? parseYMD(receiveDateRaw) : null;
-      if (isPaid) paidCount++; else unpaidCount++;
+      if (isPaid) paidCount++;
 
       let category = '일반업체';
       if (monthEndSet.has(key)) category = '월말업체';
@@ -581,8 +581,9 @@ async function runProcess() {
 
       let 비고 = pickField(r,'비고');
       const receipts = aMap[key];
+      let flaggedRow = false;
       if (!isPaid && receipts && receipts.length) {
-        flagged++;
+        flaggedRow = true;
         const noteStr = receipts.slice(0,3).map(x => `${x.date} ${x.amount.toLocaleString()}원`).join(', ');
         비고 = (비고 ? 비고 + ' / ' : '') + `⚠입금내역 확인필요: ${noteStr}`;
       }
@@ -605,11 +606,16 @@ async function runProcess() {
         _months: isPaid ? 0 : months,
         _category: category,
         _key: key,
-        _isPaid: isPaid
+        _isPaid: isPaid,
+        _flagged: flaggedRow
       };
     });
-    log(`  ✓ 총 ${outRows.length}건 (수납완료 ${paidCount} / 미수납 ${unpaidCount})`, 'log-ok');
+    // 미수납금액이 있는 행만 남김 (수납금액이 있는 행 = 수납 완료 건은 제외)
+    const outRows = builtRows.filter(r => r.미수납금액 !== 0);
+    const zeroRemoved = builtRows.length - paidCount - outRows.length;
+    log(`  ✓ 거래명세서 ${builtRows.length}건 중 수납완료 ${paidCount}건${zeroRemoved > 0 ? `·금액 0원 ${zeroRemoved}건` : ''} 제외 → 미수납 ${outRows.length}건만 남김`, 'log-ok');
     log(`  ✓ 월말 ${outRows.filter(r=>r._category==='월말업체').length}건 / 기존 ${outRows.filter(r=>r._category==='기존업체').length}건 / 일반 ${outRows.filter(r=>r._category==='일반업체').length}건`, 'log-ok');
+    const flagged = outRows.filter(r => r._flagged).length;
     if (flagged) log(`  ⚠ 입금내역 확인 필요 ${flagged}건 (비고란 표시, 자동 제외하지 않음)`, 'log-warn');
     setProgress(65);
 
