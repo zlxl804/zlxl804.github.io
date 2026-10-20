@@ -752,7 +752,7 @@ function buildWorkbook(rows, ctx) {
 
   // 합계(L열) 병합: 업체 단위 값이라 행별 연체색은 빼고, 월말업체 색만 유지 (병합 셀은 첫 셀의 서식을 따름)
   rows.forEach((r, i) => {
-    if (!(r._runLen > 1)) return;
+    if (!(r._runLen > 1) || !r.합계) return; // 합계가 0이면 병합하지 않음
     const s = DATA_START + i;
     const master = ws.getCell(s, 12);
     master.fill = (r._category === '월말업체' && monthendFillColor)
