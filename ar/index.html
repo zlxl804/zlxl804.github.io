@@ -758,7 +758,8 @@ function buildWorkbook(rows, ctx) {
     master.fill = (r._category === '월말업체' && monthendFillColor)
       ? { type: 'pattern', pattern: 'solid', fgColor: { argb: hexToARGB(monthendFillColor) } }
       : { type: 'pattern', pattern: 'none' };
-    master.alignment = { vertical: 'middle' };
+    master.alignment = { horizontal: 'right', vertical: 'bottom' };
+    master.font = { ...master.font, bold: true };
     ws.mergeCells(s, 12, s + r._runLen - 1, 12);
   });
 
